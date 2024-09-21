@@ -43,6 +43,13 @@ version = "0.0.1"
 
 [tool.poetry.dependencies]
 python = "^3.10"
+torch = "^2.4.1"
+torchvision = "^0.19.1"
+opencv-python = "^4.10.0.84"
+ffmpeg-python = "^0.2.0"
+vidgear = "^0.3.3"
+more-itertools = "^10.5.0"
+click = "^8.1.7"
 
 [tool.poetry.group.dev.dependencies]
 black = "*"

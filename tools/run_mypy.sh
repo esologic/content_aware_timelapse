@@ -11,6 +11,6 @@ source ./.venv/bin/activate
 
 export PYTHONPATH=".:./test${PYTHONPATH+:}${PYTHONPATH:-}"
 
-mypy --show-error-codes main.py  # Run on loose files within this project
+mypy --show-error-codes catcli.py  # Run on loose files within this project
 mypy --show-error-codes -p content_aware_timelapse -p test  # Run on sub-packages within this project
 

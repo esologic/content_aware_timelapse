@@ -26,6 +26,20 @@ Add if needed
 
 ## Getting Started
 
+### GPU Acceleration
+
+https://www.tensorflow.org/install/pip#software_requirements
+
+wget https://developer.download.nvidia.com/compute/cuda/12.3.0/local_installers/cuda_12.3.0_545.23.06_linux.run
+
+wget https://developer.download.nvidia.com/compute/cudnn/9.4.0/local_installers/cudnn-local-repo-ubuntu2004-9.4.0_1.0-1_amd64.deb
+sudo dpkg -i cudnn-local-repo-ubuntu2004-9.4.0_1.0-1_amd64.deb
+sudo cp /var/cudnn-local-repo-ubuntu2004-9.4.0/cudnn-*-keyring.gpg /usr/share/keyrings/
+sudo apt-get update
+sudo apt-get -y install cudnn
+
+sudo apt-get -y install cudnn-cuda-12
+
 ### Python Dependencies
 
 Poetry is required to manage Python dependencies. You can install it easily by following the

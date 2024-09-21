@@ -12,4 +12,4 @@ source ./.venv/bin/activate
 
 export PYTHONPATH=".:./test${PYTHONPATH+:}${PYTHONPATH:-}"
 
-pylint main.py content_aware_timelapse test
+pylint catcli.py content_aware_timelapse test
