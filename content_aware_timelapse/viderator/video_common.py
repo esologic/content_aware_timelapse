@@ -533,7 +533,7 @@ def display_frame_forward_opencv(
         cv2.waitKey(1)
         return frame
 
-    # yield from is used so we can run things after the input has been exhausted to cleanup.
+    # yield from is used, so we can run things after the input has been exhausted to cleanup.
     yield from map(display_frame, source)
 
     cv2.destroyWindow(window_name)

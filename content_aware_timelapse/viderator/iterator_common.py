@@ -32,14 +32,13 @@ def first_item_from_iterator(iterator: Iterator[T]) -> Tuple[T, Iterator[T]]:
     return first_item, itertools.chain([first_item], iterator)
 
 
-def items_per_second(source: Iterator[T]) -> Iterator[T]:
+def items_per_second(source: Iterator[T], queue_size: int = 60) -> Iterator[T]:
     """
     Prints logging around how often items are being extracted.
     :param source: To forward.
     :return: The input iterator.
     """
 
-    queue_size = 60
     queue_count = itertools.count()
     queue: Deque[datetime.datetime] = collections.deque(maxlen=queue_size)
 
