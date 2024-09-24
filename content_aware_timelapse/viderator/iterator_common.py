@@ -7,6 +7,8 @@ import collections
 import datetime
 import itertools
 import logging
+import threading
+from queue import Queue
 from typing import Deque, Iterator, Tuple, TypeVar
 
 LOGGER = logging.getLogger(__name__)
@@ -40,7 +42,7 @@ def items_per_second(source: Iterator[T], queue_size: int = 60) -> Iterator[T]:
     """
 
     queue_count = itertools.count()
-    queue: Deque[datetime.datetime] = collections.deque(maxlen=queue_size)
+    item_queue: Deque[datetime.datetime] = collections.deque(maxlen=queue_size)
 
     def yield_item(item: T) -> T:
         """
@@ -48,14 +50,54 @@ def items_per_second(source: Iterator[T], queue_size: int = 60) -> Iterator[T]:
         :param item: To forward.
         :return: The input item, unmodified.
         """
-        queue.append(datetime.datetime.now())
+        item_queue.append(datetime.datetime.now())
         if next(queue_count) >= queue_size:
             LOGGER.info(
                 f"The last {queue_size} items were consumed at a rate of: "
-                f"{queue_size / ((queue[-1] - queue[0]).total_seconds())} items per second."
+                f"{queue_size / ((item_queue[-1] - item_queue[0]).total_seconds())} items per "
+                "second."
             )
 
         # Don't do anything to the input item.
         return item
 
     return map(yield_item, source)
+
+
+def preload_into_memory(source: Iterator[T], buffer_size: int) -> Iterator[T]:
+    """
+    Iterators that involve reading from disk can be slow. To make sure that consumers always
+    have a nice chunk of items to consume from RAM, this function creates a worker thread that
+    reads items from source and puts them in a Queue. When the output is iterated on, it is
+    getting items from that queue, not from the input iterator.
+    :param source: Input iterator.
+    :param buffer_size: Size of the output queue. If the objects in `source` are big, this is going
+    to decide how much RAM is allocated for this process.
+    :return: An iterator of the buffered items from `source`.
+    """
+
+    item_queue: "Queue[T | object]" = Queue(maxsize=buffer_size)
+    sentinel = object()  # Unique object to signal the end of the iterator
+
+    def worker() -> None:
+        """
+        Read items from `source`, putting it into the Queue.
+        `.put` operations block if the queue is full, which is used to make sure it is topped up.
+        :return: None
+        """
+
+        for input_item in source:
+            item_queue.put(input_item)
+
+        item_queue.put(sentinel)
+
+    # Start the background thread to read from the input and fill the queue.
+    thread = threading.Thread(target=worker, daemon=True)
+    thread.start()
+
+    # Iterator that consumes from the queue
+    while True:
+        output_item = item_queue.get()
+        if output_item is sentinel:
+            break
+        yield output_item  # type: ignore

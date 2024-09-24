@@ -127,9 +127,7 @@ def _create_video_writer_resolution(
             "-movflags": "+faststart",
             "-pix_fmt": "yuv422p",
         }
-        ffmpeg_writer = WriteGear(
-            output_filename=str(video_path), compression_mode=True, **output_params
-        )
+        ffmpeg_writer = WriteGear(output=str(video_path), compression_mode=True, **output_params)
 
         def write_frame(image: RGBInt8ImageType) -> None:
             """
@@ -151,7 +149,7 @@ def _create_video_writer_resolution(
     else:
         opencv_writer = cv2.VideoWriter(
             str(video_path),
-            cv2.VideoWriter_fourcc(*"mp4v"),
+            cv2.VideoWriter_fourcc(*"mp4v"),  # type: ignore
             video_fps,
             (resolution.width, resolution.height),
         )
@@ -306,10 +304,13 @@ def frames_in_video(
             ret, frame = vid_capture.read()
             if ret:
                 image = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-                output = (
-                    image
-                    if not resize
-                    else cv2.resize(image, (width_height.width, width_height.height))
+                output = cast(
+                    RGBInt8ImageType,
+                    (
+                        image
+                        if not resize
+                        else cv2.resize(image, (width_height.width, width_height.height))
+                    ),
                 )
                 yield output
             else:
@@ -365,7 +366,7 @@ def write_source_to_disk_forward(
             writer.write(cv2.cvtColor(frame.astype(np.uint8), cv2.COLOR_BGR2RGB))
 
         for index, image in enumerate(frame_source):
-            LOGGER.info(f"Writing frame #{index} to file: {video_path}")
+            LOGGER.debug(f"Writing frame #{index} to file: {video_path}")
             write_frame(image)
             yield image
 
@@ -430,8 +431,9 @@ def resize_image(
     :return: Scaled image.
     """
 
-    output: RGBInt8ImageType = cv2.resize(
-        image, (resolution.height, resolution.width), interpolation=cv2.INTER_CUBIC
+    output = cast(
+        RGBInt8ImageType,
+        cv2.resize(image, (resolution.height, resolution.width), interpolation=cv2.INTER_CUBIC),
     )
 
     if delete:

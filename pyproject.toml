@@ -50,6 +50,7 @@ ffmpeg-python = "^0.2.0"
 vidgear = "^0.3.3"
 more-itertools = "^10.5.0"
 click = "^8.1.7"
+tqdm = "^4.66.5"
 
 [tool.poetry.group.dev.dependencies]
 black = "*"
