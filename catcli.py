@@ -10,9 +10,10 @@ import click
 import more_itertools
 import numpy as np
 import numpy.typing as npt
+import timm  # PyTorch image models
 import torch
-from torch import Tensor
-from torchvision import models
+from PIL import Image
+from torchvision import transforms
 from tqdm import tqdm
 
 from content_aware_timelapse.viderator import iterator_common, video_common
@@ -43,13 +44,13 @@ class _FramesCount(NamedTuple):
     frames: ImageSourceType
 
 
-class _DistanceIndex(NamedTuple):
+class _ScoreIndex(NamedTuple):
     """
     Intermediate type for linking the Euclidean distance between the next frame and the index
     of the frame.
     """
 
-    distance: float
+    score: float
     idx: int
 
 
@@ -94,7 +95,7 @@ class _DistanceIndex(NamedTuple):
     type=click.IntRange(min=1),
     help="Frames are sent to GPU for processing in batches of this size.",
     required=True,
-    default=85,
+    default=600,
     show_default=True,
 )
 def main(  # pylint: disable=too-many-locals
@@ -140,11 +141,11 @@ def main(  # pylint: disable=too-many-locals
 
     processing_frames = video_common.display_frame_forward_opencv(source=frames_count.frames)
     processing_frames = iterator_common.preload_into_memory(
-        processing_frames, buffer_size=int(math.ceil(2.5 * batch_size))
+        processing_frames, buffer_size=int(math.ceil(batch_size))
     )
 
-    # Load a pretrained model (e.g., ResNet18)
-    model = models.resnet18(weights="IMAGENET1K_V1")
+    # Load a pre-trained Vision Transformer model (ViT)
+    model = timm.create_model("vit_base_patch16_224", pretrained=True, num_classes=0)
     model.eval()  # Set to evaluation mode
 
     # Move the model to GPU if available and convert to FP16
@@ -152,6 +153,15 @@ def main(  # pylint: disable=too-many-locals
         model = model.cuda()
 
     model = model.half()
+
+    vit_transform = transforms.Compose(
+        [
+            transforms.Resize((224, 224)),  # ViT expects 224x224 input
+            transforms.ToTensor(),  # Convert to tensor and scale [0, 255] -> [0, 1]
+            transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
+            # ViT normalization
+        ]
+    )
 
     def images_to_feature_vectors(
         images: List[RGBInt8ImageType],
@@ -167,8 +177,9 @@ def main(  # pylint: disable=too-many-locals
         """
         # Preprocess images and stack them into a batch tensor
         tensor_image_batch = torch.stack(
-            [torch.from_numpy(img).permute(2, 0, 1).to(torch.float16) / 255.0 for img in images],
-        ).pin_memory()
+            [vit_transform(Image.fromarray(img)).to(torch.float16) for img in images]
+            # Convert each image to PIL and then apply transforms
+        ).pin_memory()  # Pin memory for better performance during transfer to GPU
 
         # Move the input tensor to GPU if available
         if torch.cuda.is_available():
@@ -176,19 +187,15 @@ def main(  # pylint: disable=too-many-locals
 
         # Disable gradient calculation and pass the batch through the model
         with torch.no_grad():
-            features: Tensor = model(tensor_image_batch)
+            outputs = model.forward_features(tensor_image_batch)
 
-        # Move the features back to CPU if they were on GPU
-        features = features.cpu()
+            # Extract feature vectors directly from the outputs
+            attention_map = outputs.cpu().numpy()  # Convert to NumPy array
 
-        # Split the batch back into individual feature vectors
-        individual_features = features.unbind(0)  # List of tensors, each with shape (1000,)
+        # Return each feature vector directly
+        return (array for array in attention_map)
 
-        return map(lambda tensor: tensor.numpy(), individual_features)
-
-    def calculate_distance(
-        current_features: npt.NDArray[np.float16], previous_features: npt.NDArray[np.float16]
-    ) -> float:
+    def calculate_score(attention_map: npt.NDArray[np.float16]) -> float:
         """
         Calculate the Euclidean distance between two feature vectors.
 
@@ -196,29 +203,29 @@ def main(  # pylint: disable=too-many-locals
         :param previous_features: Second feature vector (NumPy array).
         :return: Euclidean distance as a float.
         """
-        return float(np.linalg.norm(current_features - previous_features))
+        return float(np.sum(attention_map))
 
     # Convert frames to feature vectors and chain them together
-    frames_as_vectors = itertools.chain.from_iterable(
+    frames_as_maps = itertools.chain.from_iterable(
         map(images_to_feature_vectors, more_itertools.chunked(processing_frames, batch_size))
     )
 
-    distance_indexes: Iterator[_DistanceIndex] = (
-        _DistanceIndex(distance=calculate_distance(first_image, second_image), idx=index)
-        for index, (first_image, second_image) in tqdm(
-            enumerate(more_itertools.pairwise(frames_as_vectors)),
+    score_indexes: Iterator[_ScoreIndex] = (
+        _ScoreIndex(score=calculate_score(attention_map), idx=index)
+        for index, attention_map in tqdm(
+            enumerate(frames_as_maps),
             total=frames_count.total_frame_count,
             unit="Frames",
             ncols=100,
-            desc="Vectorizing Images",
+            desc="Scoring Images",
         )
     )
 
-    sorted_by_distance: List[_DistanceIndex] = sorted(
-        distance_indexes, key=lambda distance_index: distance_index.distance, reverse=True
+    sorted_by_score: List[_ScoreIndex] = sorted(
+        score_indexes, key=lambda distance_index: distance_index.score, reverse=True
     )
 
-    sliced: List[_DistanceIndex] = sorted_by_distance[: int(duration * output_fps)]
+    sliced: List[_ScoreIndex] = sorted_by_score[: int(duration * output_fps)]
 
     indices_only = set(map(lambda distinct_index: distinct_index.idx, sliced))
 
