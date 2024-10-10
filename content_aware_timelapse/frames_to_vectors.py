@@ -169,7 +169,9 @@ def _write_vector_file_forward(
     current_index = itertools.count(starting_index)
 
     for index, vector in zip(current_index, vector_iterator):
-        group.create_dataset(str(index), vector.shape, dtype=vector.dtype)
+        group.create_dataset(
+            name=str(index), shape=vector.shape, dtype=vector.dtype, data=vector, compression="gzip"
+        )
         f.flush()
         yield vector
 

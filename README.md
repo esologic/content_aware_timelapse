@@ -2,27 +2,21 @@
 
 Create timelapses from video that change speed based on the content found in the video. Boring sections are sped over.
 
-## Table of Contents
-[TOC]
-
 ## Usage
-
-####  Environment variables
-
-
-
-#### Correct usage
 
 With the virtual env activated, run: 
 
 ```
-python main.py --fill-me-in
+python catcli.py \
+--input "/home/devon/Desktop/Overhead Camera/pwm_driver_module/pwm_drive_module_v1.2.0_1.mp4" \
+--input "/home/devon/Desktop/Overhead Camera/pwm_driver_module/pwm_drive_module_v1.2.0_2.mp4" \
+--input "/home/devon/Desktop/Overhead Camera/pwm_driver_module/pwm_drive_module_v1.2.0_3.mp4" \
+--duration 30 \
+--output-fps 60 \
+--vectors-path ./pwm_module_assembly.hdf5 \
+--output-path ./big_mean.mp4
+
 ```
-
-#### Incorrect usage
-
-Add if needed
-
 
 ## Getting Started
 
