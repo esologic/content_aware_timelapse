@@ -38,6 +38,7 @@ def items_per_second(source: Iterator[T], queue_size: int = 60) -> Iterator[T]:
     """
     Prints logging around how often items are being extracted.
     :param source: To forward.
+    :param queue_size: Average is computed across this many items.
     :return: The input iterator.
     """
 

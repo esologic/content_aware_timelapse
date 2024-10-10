@@ -1,26 +1,20 @@
 """Main module."""
 
-import hashlib
 import itertools
-import json
 import logging
 import math
 from pathlib import Path
 from typing import Iterator, List, NamedTuple, Optional
 
 import click
-import more_itertools
 import numpy as np
 import numpy.typing as npt
 from tqdm import tqdm
 
 from content_aware_timelapse import frames_to_vectors
+from content_aware_timelapse.frames_to_vectors import create_videos_signature
 from content_aware_timelapse.viderator import iterator_common, video_common
-from content_aware_timelapse.viderator.video_common import (
-    ImageSourceType,
-    RGBInt8ImageType,
-    VideoFrames,
-)
+from content_aware_timelapse.viderator.video_common import ImageSourceType, VideoFrames
 
 LOGGER_FORMAT = "[%(asctime)s - %(process)s - %(name)20s - %(levelname)s] %(message)s"
 LOGGER_DATE_FORMAT = "%Y-%m-%d %H:%M:%S"
@@ -51,41 +45,6 @@ class _ScoreIndex(NamedTuple):
 
     score: float
     idx: int
-
-
-def create_videos_signature(video_paths: List[Path]) -> str:
-    """
-
-    :param video_paths:
-    :return:
-    """
-
-    def compute_partial_hash(video_path: Path) -> str:
-        """
-
-        :param video_path:
-        :return:
-        """
-
-        sha256 = hashlib.sha256()
-
-        with video_path.open("rb") as f:
-            sha256.update(f.read(512_000))
-
-        return sha256.hexdigest()
-
-    # Convert dictionary to JSON string
-    return json.dumps(
-        {
-            video.name: json.dumps(
-                {
-                    "file_size": video.stat().st_size,
-                    "partial_sha256": compute_partial_hash(video),
-                }
-            )
-            for video in sorted(video_paths, key=lambda p: str(p))
-        }
-    )
 
 
 @click.command()
@@ -158,6 +117,7 @@ def main(  # pylint: disable=too-many-locals
     :param duration: See click docs.
     :param output_fps: See click docs.
     :param batch_size: See click docs.
+    :param vectors_path: See click docs.
     :return: None
     """
 
@@ -200,13 +160,14 @@ def main(  # pylint: disable=too-many-locals
         :param previous_features: Second feature vector (NumPy array).
         :return: Euclidean distance as a float.
         """
-        return float(np.sum(attention_map))
+        return float(np.mean(attention_map))
 
     vectors = frames_to_vectors.frames_to_vectors(
         frames=processing_frames,
         intermediate_path=vectors_path,
         input_signature=input_signature,
         batch_size=batch_size,
+        total_input_frames=frames_count.total_frame_count,
     )
 
     score_indexes: Iterator[_ScoreIndex] = (

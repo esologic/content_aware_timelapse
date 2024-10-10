@@ -29,6 +29,8 @@ _DEFAULT_WINDOW_NAME = "Frames"
 
 LOGGER = logging.getLogger(__name__)
 
+logging.getLogger("WriteGear").setLevel(logging.ERROR)
+
 
 def _write_video(video_path: Path, audio: FilterableStream, output_path: Path) -> None:
     """
@@ -127,7 +129,10 @@ def _create_video_writer_resolution(
             "-movflags": "+faststart",
             "-pix_fmt": "yuv422p",
         }
-        ffmpeg_writer = WriteGear(output=str(video_path), compression_mode=True, **output_params)
+
+        ffmpeg_writer = WriteGear(
+            output=str(video_path), compression_mode=True, logging=False, **output_params
+        )
 
         def write_frame(image: RGBInt8ImageType) -> None:
             """
