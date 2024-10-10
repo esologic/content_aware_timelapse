@@ -1,21 +1,20 @@
 """Main module."""
 
+import hashlib
 import itertools
+import json
 import logging
 import math
 from pathlib import Path
-from typing import Iterator, List, NamedTuple
+from typing import Iterator, List, NamedTuple, Optional
 
 import click
 import more_itertools
 import numpy as np
 import numpy.typing as npt
-import timm  # PyTorch image models
-import torch
-from PIL import Image
-from torchvision import transforms
 from tqdm import tqdm
 
+from content_aware_timelapse import frames_to_vectors
 from content_aware_timelapse.viderator import iterator_common, video_common
 from content_aware_timelapse.viderator.video_common import (
     ImageSourceType,
@@ -52,6 +51,41 @@ class _ScoreIndex(NamedTuple):
 
     score: float
     idx: int
+
+
+def create_videos_signature(video_paths: List[Path]) -> str:
+    """
+
+    :param video_paths:
+    :return:
+    """
+
+    def compute_partial_hash(video_path: Path) -> str:
+        """
+
+        :param video_path:
+        :return:
+        """
+
+        sha256 = hashlib.sha256()
+
+        with video_path.open("rb") as f:
+            sha256.update(f.read(512_000))
+
+        return sha256.hexdigest()
+
+    # Convert dictionary to JSON string
+    return json.dumps(
+        {
+            video.name: json.dumps(
+                {
+                    "file_size": video.stat().st_size,
+                    "partial_sha256": compute_partial_hash(video),
+                }
+            )
+            for video in sorted(video_paths, key=lambda p: str(p))
+        }
+    )
 
 
 @click.command()
@@ -98,8 +132,20 @@ class _ScoreIndex(NamedTuple):
     default=600,
     show_default=True,
 )
+@click.option(
+    "--vectors-path",
+    "-v",
+    type=click.Path(file_okay=True, dir_okay=False, writable=True, path_type=Path),
+    help="Intermediate vectors will be written to this path. Can be used to re-run.",
+    required=False,
+)
 def main(  # pylint: disable=too-many-locals
-    input_files: List[Path], output_path: Path, duration: float, output_fps: float, batch_size: int
+    input_files: List[Path],
+    output_path: Path,
+    duration: float,
+    output_fps: float,
+    batch_size: int,
+    vectors_path: Optional[Path],
 ) -> None:
     """
     Create a timelapse based on the most interesting parts of a video rather than blindly
@@ -114,6 +160,8 @@ def main(  # pylint: disable=too-many-locals
     :param batch_size: See click docs.
     :return: None
     """
+
+    input_signature = create_videos_signature(video_paths=input_files)
 
     def load_input_videos() -> _FramesCount:
         """
@@ -144,57 +192,6 @@ def main(  # pylint: disable=too-many-locals
         processing_frames, buffer_size=int(math.ceil(batch_size))
     )
 
-    # Load a pre-trained Vision Transformer model (ViT)
-    model = timm.create_model("vit_base_patch16_224", pretrained=True, num_classes=0)
-    model.eval()  # Set to evaluation mode
-
-    # Move the model to GPU if available and convert to FP16
-    if torch.cuda.is_available():
-        model = model.cuda()
-
-    model = model.half()
-
-    vit_transform = transforms.Compose(
-        [
-            transforms.Resize((224, 224)),  # ViT expects 224x224 input
-            transforms.ToTensor(),  # Convert to tensor and scale [0, 255] -> [0, 1]
-            transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
-            # ViT normalization
-        ]
-    )
-
-    def images_to_feature_vectors(
-        images: List[RGBInt8ImageType],
-    ) -> Iterator[npt.NDArray[np.float16]]:
-        """
-        Convert a list of RGB images into feature vectors using a pretrained ResNet model.
-
-        The images are preprocessed, converted to FP16, and then passed through the model to obtain
-        feature vectors.
-
-        :param images: List of images in RGB format (as NumPy arrays).
-        :return: List of feature vectors as NumPy arrays.
-        """
-        # Preprocess images and stack them into a batch tensor
-        tensor_image_batch = torch.stack(
-            [vit_transform(Image.fromarray(img)).to(torch.float16) for img in images]
-            # Convert each image to PIL and then apply transforms
-        ).pin_memory()  # Pin memory for better performance during transfer to GPU
-
-        # Move the input tensor to GPU if available
-        if torch.cuda.is_available():
-            tensor_image_batch = tensor_image_batch.cuda(non_blocking=True)
-
-        # Disable gradient calculation and pass the batch through the model
-        with torch.no_grad():
-            outputs = model.forward_features(tensor_image_batch)
-
-            # Extract feature vectors directly from the outputs
-            attention_map = outputs.cpu().numpy()  # Convert to NumPy array
-
-        # Return each feature vector directly
-        return (array for array in attention_map)
-
     def calculate_score(attention_map: npt.NDArray[np.float16]) -> float:
         """
         Calculate the Euclidean distance between two feature vectors.
@@ -205,15 +202,17 @@ def main(  # pylint: disable=too-many-locals
         """
         return float(np.sum(attention_map))
 
-    # Convert frames to feature vectors and chain them together
-    frames_as_maps = itertools.chain.from_iterable(
-        map(images_to_feature_vectors, more_itertools.chunked(processing_frames, batch_size))
+    vectors = frames_to_vectors.frames_to_vectors(
+        frames=processing_frames,
+        intermediate_path=vectors_path,
+        input_signature=input_signature,
+        batch_size=batch_size,
     )
 
     score_indexes: Iterator[_ScoreIndex] = (
         _ScoreIndex(score=calculate_score(attention_map), idx=index)
         for index, attention_map in tqdm(
-            enumerate(frames_as_maps),
+            enumerate(vectors),
             total=frames_count.total_frame_count,
             unit="Frames",
             ncols=100,

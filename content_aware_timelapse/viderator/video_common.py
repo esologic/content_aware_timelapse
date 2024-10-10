@@ -255,6 +255,7 @@ def frames_in_video(
     video_fps: Optional[float] = None,
     reduce_fps_to: Optional[float] = None,
     width_height: Optional[ImageResolution] = None,
+    starting_frame: Optional[int] = None,
 ) -> VideoFrames:
     """
     Creates an interface to read each frame from a video into local memory for
@@ -264,6 +265,7 @@ def frames_in_video(
     :param reduce_fps_to: Discards frames such that the frames that are returned are at this
     FPS.
     :param width_height: If given, the output frames will be resized to this resolution.
+    :param starting_frame: Seek to this frame of the video open opening.
     :return: An NT containing metadata about the video, and an iterator that produces the frames.
     Frames are in RGB color order.
     :raises: ValueError if the video can't be opened, or the given `reduce_fps_to` is impossible.
@@ -282,6 +284,9 @@ def frames_in_video(
         fps = video_fps
     else:
         fps = file_fps
+
+    if starting_frame is not None:
+        vid_capture.set(cv2.CAP_PROP_POS_FRAMES, starting_frame)
 
     take_every = reduce_fps_take_every(original_fps=fps, new_fps=reduce_fps_to)
 

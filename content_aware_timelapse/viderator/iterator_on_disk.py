@@ -14,6 +14,7 @@ from typing_extensions import Protocol
 
 import h5py
 import numpy as np
+import numpy.typing as npt
 from sentinels import NOTHING
 
 from content_aware_timelapse.viderator.image_common import RGBInt8ImageType
@@ -132,7 +133,7 @@ def load_queue_items(queue: "Queue[Path]", deserialize: DeSerializeItem) -> Iter
         yield output
 
 
-def iterator_on_disk(
+def tee_disk_cache(
     iterator: Iterator[T],
     copies: int,
     serializer: Serializer = PICKLE_SERIALIZER,
@@ -187,3 +188,13 @@ def iterator_on_disk(
     return (forward_iterator(),) + tuple(
         load_queue_items(queue, deserialize=serializer.deserialize) for queue in path_queues
     )
+
+
+def vectors_on_disk(
+    iterator: Iterator[npt.NDArray[np.float16]],
+) -> Iterator[npt.NDArray[np.float16]]:
+    """
+
+    :param iterator:
+    :return:
+    """

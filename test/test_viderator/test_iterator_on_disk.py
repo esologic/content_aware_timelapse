@@ -7,7 +7,7 @@ from typing import List
 import numpy as np
 import pytest
 
-from content_aware_timelapse.viderator.iterator_on_disk import iterator_on_disk
+from content_aware_timelapse.viderator.iterator_on_disk import tee_disk_cache
 
 
 @pytest.mark.parametrize("copies", range(1, 4))
@@ -18,7 +18,7 @@ from content_aware_timelapse.viderator.iterator_on_disk import iterator_on_disk
         [0, 1, 2, 3],
     ],
 )
-def test_iterator_on_disk(to_duplicate: List[int | str], copies: int) -> None:
+def test_tee_disk_cache(to_duplicate: List[int | str], copies: int) -> None:
     """
     Test with a few different inputs, of type and length, make sure the resulting iterators are
     all the same.
@@ -27,7 +27,7 @@ def test_iterator_on_disk(to_duplicate: List[int | str], copies: int) -> None:
     :return: None
     """
 
-    result = iterator_on_disk(iterator=iter(to_duplicate), copies=copies)
+    result = tee_disk_cache(iterator=iter(to_duplicate), copies=copies)
     primary = result[0]
     secondaries = result[1:]
     assert len(secondaries) == copies
