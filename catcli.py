@@ -2,7 +2,6 @@
 
 import itertools
 import logging
-import math
 from pathlib import Path
 from typing import Iterator, List, NamedTuple, Optional
 
@@ -13,7 +12,7 @@ from tqdm import tqdm
 
 from content_aware_timelapse import frames_to_vectors
 from content_aware_timelapse.frames_to_vectors import create_videos_signature
-from content_aware_timelapse.viderator import iterator_common, video_common
+from content_aware_timelapse.viderator import video_common
 from content_aware_timelapse.viderator.video_common import ImageSourceType, VideoFrames
 
 LOGGER_FORMAT = "[%(asctime)s - %(process)s - %(name)20s - %(levelname)s] %(message)s"
@@ -148,9 +147,9 @@ def main(  # pylint: disable=too-many-locals
     LOGGER.info(f"Total frames to process: {frames_count.total_frame_count}.")
 
     processing_frames = video_common.display_frame_forward_opencv(source=frames_count.frames)
-    processing_frames = iterator_common.preload_into_memory(
-        processing_frames, buffer_size=int(math.ceil(batch_size))
-    )
+    # processing_frames = iterator_common.preload_into_memory(
+    #     processing_frames, buffer_size=int(math.ceil(batch_size))
+    # )
 
     def calculate_score(attention_map: npt.NDArray[np.float16]) -> float:
         """
