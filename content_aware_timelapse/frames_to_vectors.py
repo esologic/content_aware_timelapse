@@ -202,10 +202,14 @@ def _compute_vectors(
 
     vit_transform = transforms.Compose(
         [
-            transforms.Resize((224, 224)),  # ViT expects 224x224 input
-            transforms.ToTensor(),  # Convert to tensor and scale [0, 255] -> [0, 1]
-            transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
+            # Resize the smaller edge to 224 (maintains aspect ratio)
+            transforms.Resize(224),
+            # Center crop (or pad) the image to 224x224
+            transforms.CenterCrop(224),
+            # Convert to tensor and scale [0, 255] -> [0, 1]
+            transforms.ToTensor(),
             # ViT normalization
+            transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
         ]
     )
 

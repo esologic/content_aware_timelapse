@@ -5,7 +5,7 @@ import logging
 import math
 import multiprocessing
 from pathlib import Path
-from typing import Iterator, List, NamedTuple, Optional, Tuple
+from typing import Iterator, List, NamedTuple, Optional, Set, Tuple
 
 import click
 import numpy as np
@@ -84,16 +84,10 @@ def calculate_score(packed: Tuple[int, npt.NDArray[np.float16]]) -> _ScoreIndex:
     # Saliency-based score (max focus on the map)
     saliency_score = np.max(attention_map)
 
-    # Weights for the components (can be adjusted based on importance)
-    entropy_weight = 0.2
-    variance_weight = 0.1
-    saliency_weight = 0.9
-
-    # Combined score (weighing the different components)
     combined_score = (
-        entropy_weight * entropy_score
-        + variance_weight * variance_score
-        + saliency_weight * saliency_score
+        0.1 * np.log1p(entropy_score)
+        + 0.5 * np.log1p(variance_score)
+        + 0.8 * np.log1p(saliency_score)
     )
 
     return _ScoreIndex(score=float(combined_score), idx=index)
@@ -231,17 +225,26 @@ def main(  # pylint: disable=too-many-locals
             score_indexes, key=lambda distance_index: distance_index.score, reverse=True
         )
 
-    sliced: List[_ScoreIndex] = sorted_by_score[: int(duration * output_fps)]
+    most_interesting_indices: Set[int] = set(
+        map(
+            lambda distinct_index: distinct_index.idx, sorted_by_score[: int(duration * output_fps)]
+        )
+    )
 
-    indices_only = set(map(lambda distinct_index: distinct_index.idx, sliced))
+    # We don't have to iterate though the entire input video, only the section of the video
+    # containing the most interesting frames.
+    final_frame_index: int = max(most_interesting_indices)
+    sliced_frames: ImageSourceType = itertools.islice(
+        load_input_videos().frames, final_frame_index, None
+    )
 
-    output_iterator: ImageSourceType = (
+    most_interesting_frames: ImageSourceType = (
         index_frame[1]
         for index_frame in filter(
-            lambda index_frame: index_frame[0] in indices_only,
+            lambda index_frame: index_frame[0] in most_interesting_indices,
             tqdm(
-                enumerate(load_input_videos().frames),
-                total=max(indices_only),
+                enumerate(sliced_frames),
+                total=final_frame_index,
                 unit="Frames",
                 ncols=100,
                 desc="Writing to Disk",
@@ -250,7 +253,10 @@ def main(  # pylint: disable=too-many-locals
     )
 
     video_common.write_source_to_disk_consume(
-        source=output_iterator, video_path=output_path, video_fps=output_fps, high_quality=True
+        source=most_interesting_frames,
+        video_path=output_path,
+        video_fps=output_fps,
+        high_quality=True,
     )
 
 
