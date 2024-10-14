@@ -25,7 +25,7 @@ import torch
 from PIL import Image
 from torchvision import transforms
 
-from content_aware_timelapse.viderator.video_common import RGBInt8ImageType
+from content_aware_timelapse.viderator.video_common import ImageSourceType, RGBInt8ImageType
 
 LOGGER = logging.getLogger(__name__)
 
@@ -103,7 +103,7 @@ def _read_vector_file(vector_file: Path, input_signature: str) -> _LengthIterato
 
         for item in iter(group):
             dataset = group[item]
-            yield dataset
+            yield np.array(dataset)
 
         # Automatically close the file when iteration is done.
         f.close()
@@ -154,7 +154,7 @@ def _write_vector_file_forward(
         and len(f.keys())
     ):
         group = f[VECTORS_GROUP_NAME]
-        starting_index = max(map(int, group.keys()))
+        starting_index = max(map(int, group.keys())) + 1
     elif (
         SIGNATURE_ATTRIBUTE_NAME in f.attrs.keys()
         and f.attrs[SIGNATURE_ATTRIBUTE_NAME] != input_signature
@@ -166,9 +166,7 @@ def _write_vector_file_forward(
         group = f.create_group(name=VECTORS_GROUP_NAME, track_order=True)
         starting_index = 0
 
-    current_index = itertools.count(starting_index)
-
-    for index, vector in zip(current_index, vector_iterator):
+    for index, vector in zip(itertools.count(starting_index), vector_iterator):
         group.create_dataset(
             name=str(index),
             shape=vector.shape,
@@ -200,8 +198,7 @@ def _compute_vectors(
     # Move the model to GPU if available and convert to FP16
     if torch.cuda.is_available():
         model = model.cuda()
-
-    model = model.half()
+        model = model.half()  # Half precision for speed if using GPU
 
     vit_transform = transforms.Compose(
         [
@@ -224,15 +221,18 @@ def _compute_vectors(
         :param images: List of images in RGB format (as NumPy arrays).
         :return: List of feature vectors as NumPy arrays.
         """
-        # Preprocess images and stack them into a batch tensor
+        # Preprocess images and stack them into a batch tensor by converting each image to PIL
+        # and then applying transforms.
         tensor_image_batch = torch.stack(
             [vit_transform(Image.fromarray(img)).to(torch.float16) for img in images]
-            # Convert each image to PIL and then apply transforms
-        ).pin_memory()  # Pin memory for better performance during transfer to GPU
+        )
+
+        # Pin memory for better performance during transfer to GPU
+        pinned = tensor_image_batch.pin_memory()
 
         # Move the input tensor to GPU if available
         if torch.cuda.is_available():
-            tensor_image_batch = tensor_image_batch.cuda(non_blocking=True)
+            tensor_image_batch = pinned.cuda(non_blocking=True)
 
         # Disable gradient calculation and pass the batch through the model
         with torch.no_grad():
@@ -248,12 +248,12 @@ def _compute_vectors(
 
 
 def frames_to_vectors(
-    frames: Iterator[RGBInt8ImageType],
+    frames: ImageSourceType,
     intermediate_path: Path,
     input_signature: str,
     batch_size: int,
     total_input_frames: int,
-) -> Iterator[npt.NDArray[np.uint8]]:
+) -> Iterator[npt.NDArray[np.float16]]:
     """
     Computes feature vectors from an input iterator or frames.
     Because this process is expensive, even with GPU, the intermediate vectors are written to disk
@@ -273,7 +273,7 @@ def frames_to_vectors(
 
     if intermediate.length < total_input_frames:
         # Skip to the unprocessed section of the input.
-        unprocessed_frames = itertools.islice(frames, intermediate.length, None)
+        unprocessed_frames: ImageSourceType = itertools.islice(frames, intermediate.length, None)
 
         # Compute new vectors, writing the results to disk.
         fresh_tensors = _compute_vectors(more_itertools.chunked(unprocessed_frames, batch_size))

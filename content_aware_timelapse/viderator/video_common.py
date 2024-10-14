@@ -8,7 +8,7 @@ import math
 import pprint
 from pathlib import Path
 from tempfile import NamedTemporaryFile
-from typing import Callable, Iterator, List, NamedTuple, Optional, Union, cast
+from typing import Callable, List, NamedTuple, Optional, Union, cast
 
 import cv2
 import ffmpeg
@@ -215,7 +215,7 @@ class VideoFrames(NamedTuple):
     original_fps: float
     total_frame_count: int
     original_resolution: ImageResolution
-    frames: Iterator[RGBInt8ImageType]
+    frames: ImageSourceType
 
 
 def divide_no_remainder(numerator: Union[int, float], denominator: Union[int, float]) -> int:
@@ -305,7 +305,7 @@ def frames_in_video(
     if not vid_capture.isOpened():
         raise ValueError(f"Couldn't open video file: {video_path}")
 
-    def frames() -> Iterator[RGBInt8ImageType]:
+    def frames() -> ImageSourceType:
         """
         Read frames off of the video capture until there none left or pulling a frame fails.
         :return: An iterator of frames.
@@ -373,7 +373,10 @@ def write_source_to_disk_forward(
             :param frame: To write.
             :return: None
             """
-            writer.write(cv2.cvtColor(frame.astype(np.uint8), cv2.COLOR_BGR2RGB))
+            rgb_frame = cast(
+                RGBInt8ImageType, cv2.cvtColor(frame.astype(np.uint8), cv2.COLOR_BGR2RGB)
+            )
+            writer.write(rgb_frame)
 
         for index, image in enumerate(frame_source):
             LOGGER.debug(f"Writing frame #{index} to file: {video_path}")

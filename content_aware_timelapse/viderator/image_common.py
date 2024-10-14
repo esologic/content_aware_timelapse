@@ -4,8 +4,11 @@ Common functionality and types used in still images and in video.
 
 from typing import Iterator, NamedTuple, NewType
 
-# dimensions are (Width, Height, Colors)
-RGBInt8ImageType = NewType("RGBInt8ImageType", "np.ndarray[np.uint8]")  # type: ignore
+import numpy as np
+import numpy.typing as npt
+
+# dimensions are (Width, Height, Colors). Type is np.uint8
+RGBInt8ImageType = NewType("RGBInt8ImageType", npt.NDArray[np.uint8])
 ImageSourceType = Iterator[RGBInt8ImageType]
 
 

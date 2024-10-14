@@ -2,8 +2,10 @@
 
 import itertools
 import logging
+import math
+import multiprocessing
 from pathlib import Path
-from typing import Iterator, List, NamedTuple, Optional
+from typing import Iterator, List, NamedTuple, Optional, Tuple
 
 import click
 import numpy as np
@@ -12,7 +14,7 @@ from tqdm import tqdm
 
 from content_aware_timelapse import frames_to_vectors
 from content_aware_timelapse.frames_to_vectors import create_videos_signature
-from content_aware_timelapse.viderator import video_common
+from content_aware_timelapse.viderator import iterator_common, video_common
 from content_aware_timelapse.viderator.video_common import ImageSourceType, VideoFrames
 
 LOGGER_FORMAT = "[%(asctime)s - %(process)s - %(name)20s - %(levelname)s] %(message)s"
@@ -44,6 +46,57 @@ class _ScoreIndex(NamedTuple):
 
     score: float
     idx: int
+
+
+def calculate_score(packed: Tuple[int, npt.NDArray[np.float16]]) -> _ScoreIndex:
+    """
+    Calculate a combined score from various metrics of the attention map.
+
+    This version focuses on:
+        * entropy
+        * saliency
+        * variance
+
+    Without comparing directionality to a previous map.
+
+    :param packed: Arguments packed as a tuple. First item is the index of the vector, second item
+    is the vector.
+    :return: Combined score.
+    """
+
+    index, attention_map = packed
+
+    # Convert to float32 to prevent overflow during calculations
+    attention_map = attention_map.astype(np.float32)
+
+    # Normalize the attention map
+    normalized_map = attention_map / (np.sum(attention_map) + 1e-8)
+
+    # Filter out zeros to avoid log(0) issues in entropy calculation
+    nonzero_map = normalized_map[normalized_map > 0]
+
+    # Entropy-based score (only for non-zero elements)
+    entropy_score = -np.sum(nonzero_map * np.log(nonzero_map + 1e-8))
+
+    # Variance-based score (how spread out the attention is)
+    variance_score = np.var(attention_map)
+
+    # Saliency-based score (max focus on the map)
+    saliency_score = np.max(attention_map)
+
+    # Weights for the components (can be adjusted based on importance)
+    entropy_weight = 0.2
+    variance_weight = 0.1
+    saliency_weight = 0.9
+
+    # Combined score (weighing the different components)
+    combined_score = (
+        entropy_weight * entropy_score
+        + variance_weight * variance_score
+        + saliency_weight * saliency_score
+    )
+
+    return _ScoreIndex(score=float(combined_score), idx=index)
 
 
 @click.command()
@@ -147,21 +200,12 @@ def main(  # pylint: disable=too-many-locals
     LOGGER.info(f"Total frames to process: {frames_count.total_frame_count}.")
 
     processing_frames = video_common.display_frame_forward_opencv(source=frames_count.frames)
-    # processing_frames = iterator_common.preload_into_memory(
-    #     processing_frames, buffer_size=int(math.ceil(batch_size))
-    # )
 
-    def calculate_score(attention_map: npt.NDArray[np.float16]) -> float:
-        """
-        Calculate the Euclidean distance between two feature vectors.
+    processing_frames = iterator_common.preload_into_memory(
+        processing_frames, buffer_size=int(math.ceil(batch_size))
+    )
 
-        :param current_features: First feature vector (NumPy array).
-        :param previous_features: Second feature vector (NumPy array).
-        :return: Euclidean distance as a float.
-        """
-        return float(np.mean(attention_map))
-
-    vectors = frames_to_vectors.frames_to_vectors(
+    vectors: Iterator[npt.NDArray[np.float16]] = frames_to_vectors.frames_to_vectors(
         frames=processing_frames,
         intermediate_path=vectors_path,
         input_signature=input_signature,
@@ -169,20 +213,23 @@ def main(  # pylint: disable=too-many-locals
         total_input_frames=frames_count.total_frame_count,
     )
 
-    score_indexes: Iterator[_ScoreIndex] = (
-        _ScoreIndex(score=calculate_score(attention_map), idx=index)
-        for index, attention_map in tqdm(
-            enumerate(vectors),
-            total=frames_count.total_frame_count,
-            unit="Frames",
-            ncols=100,
-            desc="Scoring Images",
-        )
-    )
+    with multiprocessing.Pool() as pool:
 
-    sorted_by_score: List[_ScoreIndex] = sorted(
-        score_indexes, key=lambda distance_index: distance_index.score, reverse=True
-    )
+        # Use imap_unordered for parallel processing and tqdm for progress bar
+        score_indexes: Iterator[_ScoreIndex] = pool.imap_unordered(
+            calculate_score,
+            tqdm(
+                enumerate(vectors),
+                total=frames_count.total_frame_count,
+                unit="Frames",
+                ncols=100,
+                desc="Scoring Images",
+            ),
+        )
+
+        sorted_by_score: List[_ScoreIndex] = sorted(
+            score_indexes, key=lambda distance_index: distance_index.score, reverse=True
+        )
 
     sliced: List[_ScoreIndex] = sorted_by_score[: int(duration * output_fps)]
 
@@ -192,19 +239,18 @@ def main(  # pylint: disable=too-many-locals
         index_frame[1]
         for index_frame in filter(
             lambda index_frame: index_frame[0] in indices_only,
-            enumerate(load_input_videos().frames),
-        )
-    )
-
-    progress_bar_output: ImageSourceType = (
-        item
-        for item in tqdm(
-            output_iterator, total=len(sliced), unit="Frames", ncols=100, desc="Writing to Disk"
+            tqdm(
+                enumerate(load_input_videos().frames),
+                total=max(indices_only),
+                unit="Frames",
+                ncols=100,
+                desc="Writing to Disk",
+            ),
         )
     )
 
     video_common.write_source_to_disk_consume(
-        source=progress_bar_output, video_path=output_path, video_fps=output_fps, high_quality=True
+        source=output_iterator, video_path=output_path, video_fps=output_fps, high_quality=True
     )
 
 
