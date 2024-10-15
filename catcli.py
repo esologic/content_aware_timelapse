@@ -244,7 +244,7 @@ def main(  # pylint: disable=too-many-locals
                 total=final_frame_index,
                 unit="Frames",
                 ncols=100,
-                desc="Writing to Disk",
+                desc="Reading best frames for output",
             ),
         )
     )
