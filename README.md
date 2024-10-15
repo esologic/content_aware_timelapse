@@ -18,27 +18,23 @@ python catcli.py \
 --output-path ./big_mean.mp4
 ```
 
-Best Looking Run So Far
-
-```
-python catcli.py --input "/home/devon/Desktop/Overhead Camera/pwm_driver_module/pwm_drive_module_v1.2.0_1.mp4" --input "/home/devon/Desktop/Overhead Camera/pwm_driver_module/pwm_drive_module_v1.2.0_2.mp4" --input "/home/devon/Desktop/Overhead Camera/pwm_driver_module/pwm_drive_module_v1.2.0_3.mp4" --duration 30 --output-fps 60 --batch-size 1600 --vectors-path ./pwm_module_assembly_aspect.hdf5 --output-path ./big_combined_weights_vari_sali.mp4
-```
-
 ## Getting Started
 
 ### GPU Acceleration
 
-https://www.tensorflow.org/install/pip#software_requirements
+You need to have NVidia drivers and a CUDA development environment to be able to use GPU
+acceleration. These are the steps I ran:
 
+```
 wget https://developer.download.nvidia.com/compute/cuda/12.3.0/local_installers/cuda_12.3.0_545.23.06_linux.run
-
 wget https://developer.download.nvidia.com/compute/cudnn/9.4.0/local_installers/cudnn-local-repo-ubuntu2004-9.4.0_1.0-1_amd64.deb
 sudo dpkg -i cudnn-local-repo-ubuntu2004-9.4.0_1.0-1_amd64.deb
 sudo cp /var/cudnn-local-repo-ubuntu2004-9.4.0/cudnn-*-keyring.gpg /usr/share/keyrings/
 sudo apt-get update
-sudo apt-get -y install cudnn
+sudo apt-get -y install cudnn cudnn-cuda-12
+```
 
-sudo apt-get -y install cudnn-cuda-12
+Eventually, it'd be great to wrap this in a docker container so only the driver is required. 
 
 ### Python Dependencies
 
