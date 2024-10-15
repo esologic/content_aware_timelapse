@@ -18,6 +18,12 @@ python catcli.py \
 --output-path ./big_mean.mp4
 ```
 
+Best Looking Run So Far
+
+```
+python catcli.py --input "/home/devon/Desktop/Overhead Camera/pwm_driver_module/pwm_drive_module_v1.2.0_1.mp4" --input "/home/devon/Desktop/Overhead Camera/pwm_driver_module/pwm_drive_module_v1.2.0_2.mp4" --input "/home/devon/Desktop/Overhead Camera/pwm_driver_module/pwm_drive_module_v1.2.0_3.mp4" --duration 30 --output-fps 60 --batch-size 1600 --vectors-path ./pwm_module_assembly_aspect.hdf5 --output-path ./big_combined_weights_vari_sali.mp4
+```
+
 ## Getting Started
 
 ### GPU Acceleration

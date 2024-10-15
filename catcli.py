@@ -76,7 +76,7 @@ def calculate_score(packed: Tuple[int, npt.NDArray[np.float16]]) -> _ScoreIndex:
     nonzero_map = normalized_map[normalized_map > 0]
 
     # Entropy-based score (only for non-zero elements)
-    entropy_score = -np.sum(nonzero_map * np.log(nonzero_map + 1e-8))
+    _ = -np.sum(nonzero_map * np.log(nonzero_map + 1e-8))
 
     # Variance-based score (how spread out the attention is)
     variance_score = np.var(attention_map)
@@ -84,11 +84,7 @@ def calculate_score(packed: Tuple[int, npt.NDArray[np.float16]]) -> _ScoreIndex:
     # Saliency-based score (max focus on the map)
     saliency_score = np.max(attention_map)
 
-    combined_score = (
-        0.1 * np.log1p(entropy_score)
-        + 0.5 * np.log1p(variance_score)
-        + 0.8 * np.log1p(saliency_score)
-    )
+    combined_score = +0.5 * variance_score + 0.5 * saliency_score
 
     return _ScoreIndex(score=float(combined_score), idx=index)
 
@@ -193,10 +189,10 @@ def main(  # pylint: disable=too-many-locals
 
     LOGGER.info(f"Total frames to process: {frames_count.total_frame_count}.")
 
-    processing_frames = video_common.display_frame_forward_opencv(source=frames_count.frames)
+    # processing_frames = video_common.display_frame_forward_opencv(source=frames_count.frames)
 
     processing_frames = iterator_common.preload_into_memory(
-        processing_frames, buffer_size=int(math.ceil(batch_size))
+        frames_count.frames, buffer_size=int(math.ceil(batch_size))
     )
 
     vectors: Iterator[npt.NDArray[np.float16]] = frames_to_vectors.frames_to_vectors(
@@ -234,8 +230,9 @@ def main(  # pylint: disable=too-many-locals
     # We don't have to iterate though the entire input video, only the section of the video
     # containing the most interesting frames.
     final_frame_index: int = max(most_interesting_indices)
+
     sliced_frames: ImageSourceType = itertools.islice(
-        load_input_videos().frames, final_frame_index, None
+        load_input_videos().frames, None, final_frame_index
     )
 
     most_interesting_frames: ImageSourceType = (
