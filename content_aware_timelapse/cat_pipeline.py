@@ -164,14 +164,12 @@ def create_timelapse(  # pylint: disable=too-many-locals
         )
     )
 
-    print(len(most_interesting_indices))
-
-    # We don't have to iterate though the entire input video, only the section of the video
-    # containing the most interesting frames.
     final_frame_index: int = max(most_interesting_indices)
 
+    # Slice the frames to include the frame at final_frame_index
+    # Ensure the frame at final_frame_index is included, the plus one.
     sliced_frames: ImageSourceType = itertools.islice(
-        load_input_videos().frames, None, final_frame_index
+        load_input_videos().frames, None, final_frame_index + 1
     )
 
     most_interesting_frames: ImageSourceType = (
@@ -180,14 +178,13 @@ def create_timelapse(  # pylint: disable=too-many-locals
             lambda index_frame: index_frame[0] in most_interesting_indices,
             tqdm(
                 enumerate(sliced_frames),
-                total=final_frame_index,
+                total=final_frame_index + 1,
                 unit="Frames",
                 ncols=100,
                 desc="Reading best frames for output",
             ),
         )
     )
-
     video_common.write_source_to_disk_consume(
         source=most_interesting_frames,
         video_path=output_path,
