@@ -290,8 +290,13 @@ def frames_in_video(
     else:
         fps = file_fps
 
+    frame_count = itertools.count()
+
     if starting_frame is not None:
         vid_capture.set(cv2.CAP_PROP_POS_FRAMES, starting_frame)
+        frame_count = itertools.count(starting_frame)
+
+    total_frame_count = int(vid_capture.get(cv2.CAP_PROP_FRAME_COUNT))
 
     take_every = reduce_fps_take_every(original_fps=fps, new_fps=reduce_fps_to)
 
@@ -311,6 +316,14 @@ def frames_in_video(
         :return: An iterator of frames.
         """
         while vid_capture.isOpened():
+
+            current_frame_index = next(frame_count)
+
+            LOGGER.debug(
+                f"Got a frame # {current_frame_index} / {total_frame_count} "
+                f"({(current_frame_index / total_frame_count) * 100:.2f}) from: {video_path.name}"
+            )
+
             ret, frame = vid_capture.read()
             if ret:
                 image = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
@@ -329,7 +342,7 @@ def frames_in_video(
     return VideoFrames(
         original_fps=vid_capture.get(cv2.CAP_PROP_FPS),
         original_resolution=original_width_height,
-        total_frame_count=int(vid_capture.get(cv2.CAP_PROP_FRAME_COUNT)),
+        total_frame_count=total_frame_count,
         frames=itertools.islice(frames(), None, None, take_every),
     )
 

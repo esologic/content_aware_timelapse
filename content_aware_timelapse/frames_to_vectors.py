@@ -103,7 +103,7 @@ def _read_vector_file(vector_file: Path, input_signature: str) -> _LengthIterato
 
         for item in iter(group):
             dataset = group[item]
-            yield np.array(dataset)
+            yield dataset[()]
 
         # Automatically close the file when iteration is done.
         f.close()
@@ -154,7 +154,11 @@ def _write_vector_file_forward(
         and len(f.keys())
     ):
         group = f[VECTORS_GROUP_NAME]
-        starting_index = max(map(int, group.keys())) + 1
+
+        if len(group):
+            starting_index = max(map(int, group.keys())) + 1
+        else:
+            starting_index = 0
     elif (
         SIGNATURE_ATTRIBUTE_NAME in f.attrs.keys()
         and f.attrs[SIGNATURE_ATTRIBUTE_NAME] != input_signature
@@ -191,14 +195,16 @@ def _compute_vectors(
     :return: Iterator of vectors, one per input frame.
     """
 
-    # Load a pre-trained Vision Transformer model (ViT)
-    model = timm.create_model("vit_base_patch16_224", pretrained=True, num_classes=0)
-    model.eval()  # Set to evaluation mode
+    LOGGER.debug("Loading Model...")
 
-    # Move the model to GPU if available and convert to FP16
-    if torch.cuda.is_available():
-        model = model.cuda()
-        model = model.half()  # Half precision for speed if using GPU
+    # Load models to each GPU
+    models = [
+        timm.create_model("vit_base_patch16_224", pretrained=True, num_classes=0)
+        .eval()
+        .half()
+        .cuda(device=gpu_index)
+        for gpu_index in range(torch.cuda.device_count())
+    ]
 
     vit_transform = transforms.Compose(
         [
@@ -213,42 +219,68 @@ def _compute_vectors(
         ]
     )
 
-    def images_to_feature_vectors(
-        images: List[RGBInt8ImageType],
-    ) -> Iterator[npt.NDArray[np.float16]]:
+    def process_images_for_model(
+        image_batch: List[RGBInt8ImageType], model: torch.nn.Module
+    ) -> torch.Tensor:
         """
-        Convert a list of RGB images into feature vectors using a pretrained ResNet model.
+        Preprocesses a batch of images and extracts feature vectors using the specified model.
 
-        The images are preprocessed, converted to FP16, and then passed through the model to obtain
-        feature vectors.
-
-        :param images: List of images in RGB format (as NumPy arrays).
-        :return: List of feature vectors as NumPy arrays.
+        :param image_batch: List of RGB images in NumPy format.
+        :param model: The model to process the image batch.
+        :return: Feature vector tensor after processing the batch on the model's device.
         """
+        LOGGER.debug("Sent images for inference.")
+
         # Preprocess images and stack them into a batch tensor by converting each image to PIL
-        # and then applying transforms.
         tensor_image_batch = torch.stack(
-            [vit_transform(Image.fromarray(img)).to(torch.float16) for img in images]
+            [vit_transform(Image.fromarray(img)).to(torch.float16) for img in image_batch]
         )
 
         # Pin memory for better performance during transfer to GPU
         pinned = tensor_image_batch.pin_memory()
 
-        # Move the input tensor to GPU if available
-        if torch.cuda.is_available():
-            tensor_image_batch = pinned.cuda(non_blocking=True)
+        # Move the input tensor to the correct GPU (same as the model's device)
+        device = next(model.parameters()).device
+        tensor_image_batch = pinned.to(device, non_blocking=True)
 
         # Disable gradient calculation and pass the batch through the model
         with torch.no_grad():
-            outputs = model.forward_features(tensor_image_batch)
+            LOGGER.debug(f"Sending images to {device}...")
 
-            # Extract feature vectors directly from the outputs
-            attention_map = outputs.cpu().numpy()  # Convert to NumPy array
+            # Forward pass for feature extraction
+            output: torch.Tensor = model.forward_features(tensor_image_batch)
+            return output
 
-        # Return each feature vector directly
-        return (array for array in attention_map)
+    def images_to_feature_vectors(
+        image_batches: List[List[RGBInt8ImageType]],
+    ) -> Iterator[npt.NDArray[np.float16]]:
+        """
+        Convert a list of RGB image batches into feature vectors using pretrained models on multiple
+        GPUs.
 
-    yield from itertools.chain.from_iterable(map(images_to_feature_vectors, frame_batches))
+        The images are preprocessed, converted to FP16, and passed through each model to obtain
+        feature vectors. The final result is an iterator over the vectors.
+
+        :param image_batches: List of image batches (each containing a list of RGB images).
+        :return: Iterator of feature vectors, one per image.
+        """
+        # Process each image batch using all available models
+        forward_features = [
+            process_images_for_model(image_batch=image_batch, model=model)
+            for image_batch, model in zip(image_batches, models)
+        ]
+
+        # Move all outputs to CPU and convert to NumPy arrays
+        array_output = [outputs.cpu().numpy() for outputs in forward_features]
+
+        # Return the feature vectors, one per image
+        return itertools.chain.from_iterable(
+            (array for array in attention_map) for attention_map in array_output
+        )
+
+    yield from itertools.chain.from_iterable(
+        map(images_to_feature_vectors, more_itertools.chunked(frame_batches, len(models)))
+    )
 
 
 def frames_to_vectors(
@@ -273,14 +305,22 @@ def frames_to_vectors(
 
     intermediate = _read_vector_file(vector_file=intermediate_path, input_signature=input_signature)
 
+    LOGGER.info(f"Read in {intermediate.length} intermediate vectors from file.")
+
     fresh_tensors: Iterator[npt.NDArray[np.float16]] = iter([])
 
     if intermediate.length < total_input_frames:
+
+        LOGGER.info(f"Need to compute {total_input_frames-intermediate.length} new vectors.")
+
         # Skip to the unprocessed section of the input.
         unprocessed_frames: ImageSourceType = itertools.islice(frames, intermediate.length, None)
 
         # Compute new vectors, writing the results to disk.
-        fresh_tensors = _compute_vectors(more_itertools.chunked(unprocessed_frames, batch_size))
+        fresh_tensors = _compute_vectors(
+            frame_batches=more_itertools.chunked(unprocessed_frames, batch_size)
+        )
+
         fresh_tensors = _write_vector_file_forward(
             vector_iterator=fresh_tensors,
             vector_file=intermediate_path,
