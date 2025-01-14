@@ -14,7 +14,7 @@ from tqdm import tqdm
 
 from content_aware_timelapse import frames_to_vectors
 from content_aware_timelapse.frames_to_vectors import create_videos_signature
-from content_aware_timelapse.viderator import video_common
+from content_aware_timelapse.viderator import iterator_common, video_common
 from content_aware_timelapse.viderator.image_common import ImageSourceType
 from content_aware_timelapse.viderator.video_common import VideoFrames
 
@@ -131,7 +131,9 @@ def create_timelapse(  # pylint: disable=too-many-locals
     LOGGER.info(f"Total frames to process: {frames_count.total_frame_count}.")
 
     vectors: Iterator[npt.NDArray[np.float16]] = frames_to_vectors.frames_to_vectors(
-        frames=frames_count.frames,
+        frames=iterator_common.preload_into_memory(
+            source=frames_count.frames, buffer_size=batch_size * 3
+        ),
         intermediate_path=vectors_path,
         input_signature=input_signature,
         batch_size=batch_size,

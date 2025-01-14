@@ -13,8 +13,9 @@ import hashlib
 import itertools
 import json
 import logging
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
-from typing import Iterator, List, NamedTuple
+from typing import Iterator, List, NamedTuple, Optional
 
 import h5py
 import more_itertools
@@ -252,7 +253,7 @@ def _compute_vectors(
             return output
 
     def images_to_feature_vectors(
-        image_batches: List[List[RGBInt8ImageType]],
+        image_batches: List[List[RGBInt8ImageType]], executor: ThreadPoolExecutor
     ) -> Iterator[npt.NDArray[np.float16]]:
         """
         Convert a list of RGB image batches into feature vectors using pretrained models on multiple
@@ -262,30 +263,34 @@ def _compute_vectors(
         feature vectors. The final result is an iterator over the vectors.
 
         :param image_batches: List of image batches (each containing a list of RGB images).
+        :param executor: A ThreadPoolExecutor to handle concurrent image processing.
         :return: Iterator of feature vectors, one per image.
         """
-        # Process each image batch using all available models
-        forward_features = [
-            process_images_for_model(image_batch=image_batch, model=model)
+        # Submit image batches to thread pool
+        futures = [
+            executor.submit(process_images_for_model, image_batch, model)
             for image_batch, model in zip(image_batches, models)
         ]
 
-        # Move all outputs to CPU and convert to NumPy arrays
-        array_output = [outputs.cpu().numpy() for outputs in forward_features]
+        # Collect results as they are completed
+        for future in as_completed(futures):
+            output = future.result()
+            yield from output.cpu().numpy()
 
-        # Return the feature vectors, one per image
-        return itertools.chain.from_iterable(
-            (array for array in attention_map) for attention_map in array_output
+    # Create a single thread pool for all image batches
+    with ThreadPoolExecutor(max_workers=len(models)) as executor:
+        # Use a single thread pool for all image batches
+        yield from itertools.chain.from_iterable(
+            map(
+                lambda batch: images_to_feature_vectors(batch, executor),
+                more_itertools.chunked(frame_batches, len(models)),
+            )
         )
-
-    yield from itertools.chain.from_iterable(
-        map(images_to_feature_vectors, more_itertools.chunked(frame_batches, len(models)))
-    )
 
 
 def frames_to_vectors(
     frames: ImageSourceType,
-    intermediate_path: Path,
+    intermediate_path: Optional[Path],
     input_signature: str,
     batch_size: int,
     total_input_frames: int,
@@ -303,33 +308,42 @@ def frames_to_vectors(
     :return: Vectors, one per input frame.
     """
 
-    intermediate = _read_vector_file(vector_file=intermediate_path, input_signature=input_signature)
+    if intermediate_path is not None:
 
-    LOGGER.info(f"Read in {intermediate.length} intermediate vectors from file.")
-
-    fresh_tensors: Iterator[npt.NDArray[np.float16]] = iter([])
-
-    if intermediate.length < total_input_frames:
-
-        LOGGER.info(f"Need to compute {total_input_frames-intermediate.length} new vectors.")
-
-        # Skip to the unprocessed section of the input.
-        unprocessed_frames: ImageSourceType = itertools.islice(frames, intermediate.length, None)
-
-        # Compute new vectors, writing the results to disk.
-        fresh_tensors = _compute_vectors(
-            frame_batches=more_itertools.chunked(unprocessed_frames, batch_size)
+        intermediate = _read_vector_file(
+            vector_file=intermediate_path, input_signature=input_signature
         )
 
-        fresh_tensors = _write_vector_file_forward(
-            vector_iterator=fresh_tensors,
-            vector_file=intermediate_path,
-            input_signature=input_signature,
+        LOGGER.info(f"Read in {intermediate.length} intermediate vectors from file.")
+
+        fresh_tensors: Iterator[npt.NDArray[np.float16]] = iter([])
+
+        if intermediate.length < total_input_frames:
+
+            LOGGER.info(f"Need to compute {total_input_frames-intermediate.length} new vectors.")
+
+            # Skip to the unprocessed section of the input.
+            unprocessed_frames: ImageSourceType = itertools.islice(
+                frames, intermediate.length, None
+            )
+
+            # Compute new vectors, writing the results to disk.
+            fresh_tensors = _compute_vectors(
+                frame_batches=more_itertools.chunked(unprocessed_frames, batch_size)
+            )
+
+            fresh_tensors = _write_vector_file_forward(
+                vector_iterator=fresh_tensors,
+                vector_file=intermediate_path,
+                input_signature=input_signature,
+            )
+
+        yield from itertools.chain.from_iterable(
+            (
+                intermediate.iterator,  # first output any vectors from disk.
+                fresh_tensors,  # second, compute any vectors not found on disk.
+            )
         )
 
-    yield from itertools.chain.from_iterable(
-        (
-            intermediate.iterator,  # first output any vectors from disk.
-            fresh_tensors,  # second, compute any vectors not found on disk.
-        )
-    )
+    else:
+        yield from _compute_vectors(frame_batches=more_itertools.chunked(frames, batch_size))
