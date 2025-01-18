@@ -27,7 +27,7 @@ def test_create_timelapse(tmpdir: Path) -> None:
         output_path=output_path,
         duration=duration,
         output_fps=output_fps,
-        batch_size=1000,
+        batch_size=100,
         vectors_path=vectors_path,
     )
 

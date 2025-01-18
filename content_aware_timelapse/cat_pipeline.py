@@ -4,7 +4,6 @@ Main functionality, defines the pipeline.
 
 import itertools
 import logging
-import multiprocessing
 from pathlib import Path
 from typing import Iterator, List, NamedTuple, Optional, Set, Tuple
 
@@ -62,21 +61,19 @@ def calculate_score(packed: Tuple[int, npt.NDArray[np.float16]]) -> _ScoreIndex:
     attention_map = attention_map.astype(np.float32)
 
     # Normalize the attention map
-    normalized_map = attention_map / (np.sum(attention_map) + 1e-8)
+    # normalized_map = attention_map / (np.sum(attention_map) + 1e-8)
 
     # Filter out zeros to avoid log(0) issues in entropy calculation
-    nonzero_map = normalized_map[normalized_map > 0]
+    # nonzero_map = normalized_map[normalized_map > 0]
 
     # Entropy-based score (only for non-zero elements)
-    _ = -np.sum(nonzero_map * np.log(nonzero_map + 1e-8))
+    # _ = -np.sum(nonzero_map * np.log(nonzero_map + 1e-8))
 
     # Variance-based score (how spread out the attention is)
     variance_score = np.var(attention_map)
-
-    # Saliency-based score (max focus on the map)
     saliency_score = np.max(attention_map)
 
-    combined_score = +0.5 * variance_score + 0.5 * saliency_score
+    combined_score = 0.5 * variance_score + 0.5 * saliency_score
 
     return _ScoreIndex(score=float(combined_score), idx=index)
 
@@ -140,25 +137,23 @@ def create_timelapse(  # pylint: disable=too-many-locals
         total_input_frames=frames_count.total_frame_count,
     )
 
-    with multiprocessing.Pool() as pool:
+    LOGGER.debug("Starting to sort output vectors by score.")
 
-        LOGGER.debug("Starting to sort output vectors by score.")
+    # Use imap_unordered for parallel processing and tqdm for progress bar
+    score_indexes: Iterator[_ScoreIndex] = map(
+        calculate_score,
+        tqdm(
+            enumerate(vectors),
+            total=frames_count.total_frame_count,
+            unit="Frames",
+            ncols=100,
+            desc="Scoring Images",
+        ),
+    )
 
-        # Use imap_unordered for parallel processing and tqdm for progress bar
-        score_indexes: Iterator[_ScoreIndex] = pool.imap_unordered(
-            calculate_score,
-            tqdm(
-                enumerate(vectors),
-                total=frames_count.total_frame_count,
-                unit="Frames",
-                ncols=100,
-                desc="Scoring Images",
-            ),
-        )
-
-        sorted_by_score: List[_ScoreIndex] = sorted(
-            score_indexes, key=lambda distance_index: distance_index.score, reverse=True
-        )
+    sorted_by_score: List[_ScoreIndex] = sorted(
+        score_indexes, key=lambda distance_index: distance_index.score, reverse=True
+    )
 
     most_interesting_indices: Set[int] = set(
         map(

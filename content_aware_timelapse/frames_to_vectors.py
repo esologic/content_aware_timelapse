@@ -10,12 +10,14 @@ These files, called "vector file"s, are HDF5 files of numpy arrays.
 """
 
 import hashlib
+import io
 import itertools
 import json
 import logging
+import multiprocessing
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
-from typing import Iterator, List, NamedTuple, Optional
+from typing import Iterator, List, NamedTuple, Optional, Tuple
 
 import h5py
 import more_itertools
@@ -128,6 +130,31 @@ def _read_vector_file(vector_file: Path, input_signature: str) -> _LengthIterato
         )
 
 
+def _in_memory_hdf5(index_vector: Tuple[int, npt.NDArray[np.float16]]) -> Tuple[int, io.BytesIO]:
+    """
+    Create an in-memory HDF5 file of the input vector.
+    :param index_vector: Packed input tuple of the frame's index in the video, and
+    it's corresponding vectors.
+    :return: A packed tuple of the input index and the bytesio containing the hdf5 file for copying.
+    """
+
+    index, vector = index_vector
+
+    bytes_io = io.BytesIO()
+
+    with h5py.File(bytes_io, "w") as f:
+        f.create_dataset(
+            name=str(index),
+            shape=vector.shape,
+            dtype=vector.dtype,
+            data=vector,
+            compression="gzip",
+            compression_opts=9,
+        )
+
+    return index, bytes_io
+
+
 def _write_vector_file_forward(
     vector_iterator: Iterator[npt.NDArray[np.float16]],
     vector_file: Path,
@@ -147,41 +174,48 @@ def _write_vector_file_forward(
     :raises ValueError: If the vector file exists and the signature does not match the input.
     """
 
-    f = h5py.File(vector_file, "a")
+    with h5py.File(vector_file, "a") as f:
 
-    if (
-        SIGNATURE_ATTRIBUTE_NAME in f.attrs.keys()
-        and f.attrs[SIGNATURE_ATTRIBUTE_NAME] == input_signature
-        and len(f.keys())
-    ):
-        group = f[VECTORS_GROUP_NAME]
+        if (
+            SIGNATURE_ATTRIBUTE_NAME in f.attrs.keys()
+            and f.attrs[SIGNATURE_ATTRIBUTE_NAME] == input_signature
+            and len(f.keys())
+        ):
+            group = f[VECTORS_GROUP_NAME]
 
-        if len(group):
-            starting_index = max(map(int, group.keys())) + 1
+            if len(group):
+                starting_index = max(map(int, group.keys())) + 1
+            else:
+                starting_index = 0
+        elif (
+            SIGNATURE_ATTRIBUTE_NAME in f.attrs.keys()
+            and f.attrs[SIGNATURE_ATTRIBUTE_NAME] != input_signature
+            and len(f.keys())
+        ):
+            raise ValueError("Can't write to vector file! Signature does not match.")
         else:
+            f.attrs[SIGNATURE_ATTRIBUTE_NAME] = input_signature
+            f.create_group(name=VECTORS_GROUP_NAME, track_order=True)
             starting_index = 0
-    elif (
-        SIGNATURE_ATTRIBUTE_NAME in f.attrs.keys()
-        and f.attrs[SIGNATURE_ATTRIBUTE_NAME] != input_signature
-        and len(f.keys())
-    ):
-        raise ValueError("Can't write to vector file! Signature does not match.")
-    else:
-        f.attrs[SIGNATURE_ATTRIBUTE_NAME] = input_signature
-        group = f.create_group(name=VECTORS_GROUP_NAME, track_order=True)
-        starting_index = 0
 
-    for index, vector in zip(itertools.count(starting_index), vector_iterator):
-        group.create_dataset(
-            name=str(index),
-            shape=vector.shape,
-            dtype=vector.dtype,
-            data=vector,
-            compression="gzip",
-            compression_opts=9,
-        )
-        f.flush()
-        yield vector
+        LOGGER.info(f"Starting to write vectors to: {vector_file}")
+
+        # Doing this tee prevents the need to get the vector out of the pool twice.
+        vectors_input, vectors_output = itertools.tee(vector_iterator, 2)
+
+        with multiprocessing.Pool() as pool:
+
+            for (index, bytes_io), vector in zip(
+                pool.imap(_in_memory_hdf5, zip(itertools.count(starting_index), vectors_input)),
+                vectors_output,
+            ):
+
+                with h5py.File(bytes_io) as input_file:
+                    input_file.copy(input_file[str(index)], f[VECTORS_GROUP_NAME], str(index))
+
+                f.flush()
+
+                yield vector
 
     f.close()
 
@@ -273,9 +307,11 @@ def _compute_vectors(
         ]
 
         # Collect results as they are completed
-        for future in as_completed(futures):
+        for index, future in enumerate(as_completed(futures)):
             output = future.result()
-            yield from output.cpu().numpy()
+            unpacked = output.cpu().numpy()
+            LOGGER.debug(f"Got back image batch #{index} from GPU. Shape: {unpacked.shape}")
+            yield from unpacked
 
     # Create a single thread pool for all image batches
     with ThreadPoolExecutor(max_workers=len(models)) as executor:
