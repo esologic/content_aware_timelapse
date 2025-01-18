@@ -130,12 +130,15 @@ def _read_vector_file(vector_file: Path, input_signature: str) -> _LengthIterato
         )
 
 
-def _in_memory_hdf5(index_vector: Tuple[int, npt.NDArray[np.float16]]) -> Tuple[int, io.BytesIO]:
+def _in_memory_hdf5(
+    index_vector: Tuple[int, npt.NDArray[np.float16]]
+) -> Tuple[int, npt.NDArray[np.float16], io.BytesIO]:
     """
     Create an in-memory HDF5 file of the input vector.
     :param index_vector: Packed input tuple of the frame's index in the video, and
     it's corresponding vectors.
-    :return: A packed tuple of the input index and the bytesio containing the hdf5 file for copying.
+    :return: A packed tuple of the input index, the vector and the bytesio containing the
+    hdf5 file for copying.
     """
 
     index, vector = index_vector
@@ -152,7 +155,7 @@ def _in_memory_hdf5(index_vector: Tuple[int, npt.NDArray[np.float16]]) -> Tuple[
             compression_opts=9,
         )
 
-    return index, bytes_io
+    return index, vector, bytes_io
 
 
 def _write_vector_file_forward(
@@ -195,25 +198,23 @@ def _write_vector_file_forward(
             raise ValueError("Can't write to vector file! Signature does not match.")
         else:
             f.attrs[SIGNATURE_ATTRIBUTE_NAME] = input_signature
-            f.create_group(name=VECTORS_GROUP_NAME, track_order=True)
+            _ = f.create_group(name=VECTORS_GROUP_NAME, track_order=True)
             starting_index = 0
 
         LOGGER.info(f"Starting to write vectors to: {vector_file}")
 
-        # Doing this tee prevents the need to get the vector out of the pool twice.
-        vectors_input, vectors_output = itertools.tee(vector_iterator, 2)
-
         with multiprocessing.Pool() as pool:
 
-            for (index, bytes_io), vector in zip(
-                pool.imap(_in_memory_hdf5, zip(itertools.count(starting_index), vectors_input)),
-                vectors_output,
+            for index, vector, bytes_io in pool.imap(
+                _in_memory_hdf5, zip(itertools.count(starting_index), vector_iterator)
             ):
 
                 with h5py.File(bytes_io) as input_file:
                     input_file.copy(input_file[str(index)], f[VECTORS_GROUP_NAME], str(index))
 
                 f.flush()
+
+                del bytes_io
 
                 yield vector
 
