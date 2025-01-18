@@ -230,16 +230,29 @@ def _compute_vectors(
     :return: Iterator of vectors, one per input frame.
     """
 
-    LOGGER.debug("Loading Model...")
+    LOGGER.debug(f"Detected {torch.cuda.device_count()} GPUs. Loading Model")
+
+    def load_model_onto_gpu(gpu_index: int) -> torch.nn.Module:
+        """
+        Creates the model and loads it onto the target GPU, adding logging.
+        :param gpu_index: Target of GPU.
+        :return: the model for use.
+        """
+        LOGGER.debug(f"Loading model onto index: {gpu_index}...")
+        try:
+            model: torch.nn.Module = (
+                timm.create_model("vit_base_patch16_224", pretrained=True, num_classes=0)
+                .eval()
+                .half()
+                .cuda(device=gpu_index)
+            )
+            return model
+        except RuntimeError:
+            LOGGER.error("Ran into error loading model!")
+            raise
 
     # Load models to each GPU
-    models = [
-        timm.create_model("vit_base_patch16_224", pretrained=True, num_classes=0)
-        .eval()
-        .half()
-        .cuda(device=gpu_index)
-        for gpu_index in range(torch.cuda.device_count())
-    ]
+    models: List[torch.nn.Module] = list(map(load_model_onto_gpu, range(torch.cuda.device_count())))
 
     vit_transform = transforms.Compose(
         [
