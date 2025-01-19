@@ -132,29 +132,25 @@ def _read_vector_file(vector_file: Path, input_signature: str) -> _LengthIterato
 
 def _create_hdf5_worker(
     index_vector_packed: Tuple[int, npt.NDArray[np.float16]]
-) -> Tuple[int, npt.NDArray[np.float16], io.BytesIO]:
+) -> Tuple[int, bytes]:
     """
-    Create an in-memory HDF5 file of the input vector.
-    :param index_vector_packed: Packed input tuple of the frame's index in the video, and
-    it's corresponding vectors.
-    :return: A packed tuple of the input index and the bytesio containing the hdf5 file for copying.
+    Create an in-memory HDF5 file of the input vector and return the serialized bytes.
     """
-
     index, vector = index_vector_packed
 
-    bytes_io = io.BytesIO()
+    # Use a BytesIO stream to create a temporary HDF5 file
+    with io.BytesIO() as buffer:
+        with h5py.File(buffer, "w") as f:
+            f.create_dataset(
+                name=str(index),
+                shape=vector.shape,
+                dtype=vector.dtype,
+                data=vector,
+                compression="gzip",
+                compression_opts=9,
+            )
 
-    with h5py.File(bytes_io, "w") as f:
-        f.create_dataset(
-            name=str(index),
-            shape=vector.shape,
-            dtype=vector.dtype,
-            data=vector,
-            compression="gzip",
-            compression_opts=9,
-        )
-
-    return index, vector, bytes_io
+        return index, buffer.getvalue()
 
 
 def _write_vector_file_forward(
@@ -163,31 +159,17 @@ def _write_vector_file_forward(
     input_signature: str,
 ) -> Iterator[npt.NDArray[np.float16]]:
     """
-    Iterate through the input, writing the vectors to a vector file as we go. Unmodified vectors
-    are then re-iterated in the output.
-    :param vector_iterator: Input. Written to disk and then forwarded.
-    :param vector_file: Output path. Note here:
-        *   If this file already exists and contains vectors and a matching signature,
-            it is assumed that the caller knows this, and is only inputting subsequent vectors.
-            As a result, the input vectors are appended to the existing vectors in the group.
-        *   If this file is empty, the index starts from zero.
-    :param input_signature: Describes the source of the input vectors.
-    :return: Iterator, forwarded from `vector_file`.
-    :raises ValueError: If the vector file exists and the signature does not match the input.
+    Write vectors to the vector file and forward unmodified vectors.
     """
-
     with h5py.File(vector_file, "a") as f:
+        # Determine starting index
         if (
             SIGNATURE_ATTRIBUTE_NAME in f.attrs.keys()
             and f.attrs[SIGNATURE_ATTRIBUTE_NAME] == input_signature
             and len(f.keys())
         ):
             group = f[VECTORS_GROUP_NAME]
-
-            if len(group):
-                starting_index = max(map(int, group.keys())) + 1
-            else:
-                starting_index = 0
+            starting_index = max(map(int, group.keys())) + 1 if len(group) else 0
         elif (
             SIGNATURE_ATTRIBUTE_NAME in f.attrs.keys()
             and f.attrs[SIGNATURE_ATTRIBUTE_NAME] != input_signature
@@ -201,19 +183,21 @@ def _write_vector_file_forward(
 
         LOGGER.info(f"Starting to write vectors to: {vector_file}")
 
-        with multiprocessing.Pool() as pool:
-            for index, vector, bytes_io in pool.imap(
-                _create_hdf5_worker, zip(itertools.count(starting_index), vector_iterator)
-            ):
+        output_vectors, forward_vectors = itertools.tee(vector_iterator, 2)
 
-                try:
-                    with h5py.File(bytes_io) as input_file:
+        with multiprocessing.Pool() as pool:
+            for (index, serialized_data), output_vector in zip(
+                    pool.imap(_create_hdf5_worker, zip(itertools.count(starting_index), forward_vectors)),
+                    output_vectors
+            ):
+                with io.BytesIO(serialized_data) as buffer:
+
+                    with h5py.File(buffer, "r") as input_file:
                         input_file.copy(input_file[str(index)], f[VECTORS_GROUP_NAME], str(index))
-                finally:
-                    f.flush()
-                    bytes_io.close()
-                    del bytes_io
-                    yield vector
+                        input_file.flush()
+                        f.flush()
+
+                yield output_vector
 
 
 def _compute_vectors(
