@@ -9,17 +9,12 @@ to be re-computed for similar runs.
 These files, called "vector file"s, are HDF5 files of numpy arrays.
 """
 
-import hashlib
-import io
 import itertools
-import json
 import logging
-import multiprocessing
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
-from typing import Iterator, List, NamedTuple, Optional, Tuple
+from typing import Iterator, List, Optional
 
-import h5py
 import more_itertools
 import numpy as np
 import numpy.typing as npt
@@ -28,176 +23,10 @@ import torch
 from PIL import Image
 from torchvision import transforms
 
+from content_aware_timelapse import vector_file
 from content_aware_timelapse.viderator.video_common import ImageSourceType, RGBInt8ImageType
 
 LOGGER = logging.getLogger(__name__)
-
-VECTORS_GROUP_NAME = "vectors"
-SIGNATURE_ATTRIBUTE_NAME = "signature"
-
-
-def create_videos_signature(video_paths: List[Path]) -> str:
-    """
-    Used to describe the contents of a vector file. Becomes an attribute in the HDF5 file.
-    :param video_paths: Paths to the videos in the vector file.
-    :return: A string, ready to be input to the HDF5 file.
-    """
-
-    def compute_partial_hash(video_path: Path) -> str:
-        """
-        Hashes the first 512KB of a video file.
-        :param video_path: Path to the video.
-        :return: Hash digest as a string.
-        """
-
-        sha256 = hashlib.sha256()
-
-        with video_path.open("rb") as f:
-            sha256.update(f.read(512_000))
-
-        return sha256.hexdigest()
-
-    # Convert dictionary to JSON string
-    return json.dumps(
-        {
-            video.name: json.dumps(
-                {
-                    "file_size": video.stat().st_size,
-                    "partial_sha256": compute_partial_hash(video),
-                }
-            )
-            for video in sorted(video_paths, key=str)
-        }
-    )
-
-
-class _LengthIterator(NamedTuple):
-    """
-    Intermediate type.
-    Links the count of vectors on disk, in the file with an iterator that will emit those vectors.
-    """
-
-    length: int
-    iterator: Iterator[npt.NDArray[np.float16]]
-
-
-def _read_vector_file(vector_file: Path, input_signature: str) -> _LengthIterator:
-    """
-    Reads vectors from an HDF5 "vector file" as an iterator. When the iterator in the output is
-    exhausted, it is auto-closed.
-
-    If the input file is empty, the resulting count will be zero and the iterator will have
-    no items in it.
-
-    :param vector_file: Path to the HDF5 file.
-    :param input_signature: Signature to validate against.
-    :return: NT containing the number of vectors on disk and an iterator that produces them.
-    """
-
-    f = h5py.File(vector_file, "a")
-
-    def iterate_from_file() -> Iterator[npt.NDArray[np.float16]]:
-        """
-        Yields each dataset in the vectors group.
-        :return: An iterator of the datasets.
-        """
-
-        group = f[VECTORS_GROUP_NAME]
-
-        for item in iter(group):
-            dataset = group[item]
-            yield dataset[()]
-
-        # Automatically close the file when iteration is done.
-        f.close()
-
-    if (
-        SIGNATURE_ATTRIBUTE_NAME in f.attrs.keys()
-        and f.attrs[SIGNATURE_ATTRIBUTE_NAME] == input_signature
-        and len(f.keys())
-    ):
-        completed_vectors = len(f[VECTORS_GROUP_NAME])
-        return _LengthIterator(
-            length=completed_vectors,
-            iterator=iterate_from_file(),
-        )
-    else:
-        # Close the file if signature doesn't match or file is empty.
-        f.close()
-        return _LengthIterator(
-            length=0,
-            iterator=iter([]),
-        )
-
-
-def _create_hdf5_worker(
-    index_vector_packed: Tuple[int, npt.NDArray[np.float16]]
-) -> Tuple[int, bytes]:
-    """
-    Create an in-memory HDF5 file of the input vector and return the serialized bytes.
-    """
-    index, vector = index_vector_packed
-
-    # Use a BytesIO stream to create a temporary HDF5 file
-    with io.BytesIO() as buffer:
-        with h5py.File(buffer, "w") as f:
-            f.create_dataset(
-                name=str(index),
-                shape=vector.shape,
-                dtype=vector.dtype,
-                data=vector,
-                compression="gzip",
-                compression_opts=9,
-            )
-
-        return index, buffer.getvalue()
-
-
-def _write_vector_file_forward(
-    vector_iterator: Iterator[npt.NDArray[np.float16]],
-    vector_file: Path,
-    input_signature: str,
-) -> Iterator[npt.NDArray[np.float16]]:
-    """
-    Write vectors to the vector file and forward unmodified vectors.
-    """
-    with h5py.File(vector_file, "a") as f:
-        # Determine starting index
-        if (
-            SIGNATURE_ATTRIBUTE_NAME in f.attrs.keys()
-            and f.attrs[SIGNATURE_ATTRIBUTE_NAME] == input_signature
-            and len(f.keys())
-        ):
-            group = f[VECTORS_GROUP_NAME]
-            starting_index = max(map(int, group.keys())) + 1 if len(group) else 0
-        elif (
-            SIGNATURE_ATTRIBUTE_NAME in f.attrs.keys()
-            and f.attrs[SIGNATURE_ATTRIBUTE_NAME] != input_signature
-            and len(f.keys())
-        ):
-            raise ValueError("Can't write to vector file! Signature does not match.")
-        else:
-            f.attrs[SIGNATURE_ATTRIBUTE_NAME] = input_signature
-            _ = f.create_group(name=VECTORS_GROUP_NAME, track_order=True)
-            starting_index = 0
-
-        LOGGER.info(f"Starting to write vectors to: {vector_file}")
-
-        output_vectors, forward_vectors = itertools.tee(vector_iterator, 2)
-
-        with multiprocessing.Pool() as pool:
-            for (index, serialized_data), output_vector in zip(
-                    pool.imap(_create_hdf5_worker, zip(itertools.count(starting_index), forward_vectors)),
-                    output_vectors
-            ):
-                with io.BytesIO(serialized_data) as buffer:
-
-                    with h5py.File(buffer, "r") as input_file:
-                        input_file.copy(input_file[str(index)], f[VECTORS_GROUP_NAME], str(index))
-                        input_file.flush()
-                        f.flush()
-
-                yield output_vector
 
 
 def _compute_vectors(
@@ -337,7 +166,7 @@ def frames_to_vectors(
 
     if intermediate_path is not None:
 
-        intermediate = _read_vector_file(
+        intermediate = vector_file.read_vector_file(
             vector_file=intermediate_path, input_signature=input_signature
         )
 
@@ -359,7 +188,7 @@ def frames_to_vectors(
                 frame_batches=more_itertools.chunked(unprocessed_frames, batch_size)
             )
 
-            fresh_tensors = _write_vector_file_forward(
+            fresh_tensors = vector_file.write_vector_file_forward(
                 vector_iterator=fresh_tensors,
                 vector_file=intermediate_path,
                 input_signature=input_signature,

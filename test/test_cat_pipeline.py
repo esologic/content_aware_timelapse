@@ -9,15 +9,15 @@ from content_aware_timelapse import cat_pipeline
 from content_aware_timelapse.viderator import video_common
 
 
-def test_create_timelapse(tmpdir: Path) -> None:
+def test_create_timelapse(tmpdir: str) -> None:
     """
     Using a test asset, runs the main `create_timelapse` function and inspects the output.
     :param tmpdir: Test fixture.
     :return: None
     """
 
-    output_path = tmpdir / "output.mp4"
-    vectors_path = tmpdir / "vectors.hdf5"
+    output_path = Path(tmpdir) / "output.mp4"
+    vectors_path = Path(tmpdir) / "vectors.hdf5"
 
     duration = 30
     output_fps = 25

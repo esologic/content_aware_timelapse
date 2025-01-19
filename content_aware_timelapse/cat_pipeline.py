@@ -12,7 +12,7 @@ from numpy import typing as npt
 from tqdm import tqdm
 
 from content_aware_timelapse import frames_to_vectors
-from content_aware_timelapse.frames_to_vectors import create_videos_signature
+from content_aware_timelapse.vector_file import create_videos_signature
 from content_aware_timelapse.viderator import iterator_common, video_common
 from content_aware_timelapse.viderator.image_common import ImageSourceType
 from content_aware_timelapse.viderator.video_common import VideoFrames

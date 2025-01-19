@@ -1,5 +1,11 @@
 # Changelog
 
+0.2.1 - (2025-01-19)
+------------------
+
+* Fixed output parallelization, needed to swtich format of vector file hdf5.
+
+
 0.2.0 - (2025-01-18)
 ------------------
 
