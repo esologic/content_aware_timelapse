@@ -213,8 +213,14 @@ def write_vector_file_forward(
     input_signature: str,
 ) -> Iterator[npt.NDArray[np.float16]]:
     """
-    Write vectors to the vector file and forward unmodified vectors.
+    Creates a new iterator that is a compy of the input iterator. Each time the new iterator is
+    iterated upon, that file is written to disk in the input file.
+    :param vector_iterator: Input vectors.
+    :param vector_file: Path to the file to write.
+    :param input_signature: Added to the newly created vector file as an attribute.
+    :return: The input vectors in their original order. Now they've been written to disk.
     """
+
     with h5py.File(vector_file, "a") as f:
 
         starting_index = _setup_vector_file_metadata(f, input_signature)
