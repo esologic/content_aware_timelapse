@@ -78,7 +78,8 @@ def test_write_and_read_vectors(
     read_vectors = list(result.iterator)
 
     # Ensure the same number of vectors were written and read
-    assert len(written_vectors) == len(read_vectors) == len(random_vectors)
+    assert len(written_vectors) == len(random_vectors)
+    assert len(read_vectors) == len(random_vectors)
 
     # Ensure all vectors match and identify whether the issue is in writing or reading
     for written, read, actual in zip(written_vectors, read_vectors, random_vectors):

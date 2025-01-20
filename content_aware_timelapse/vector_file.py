@@ -10,7 +10,6 @@ import io
 import itertools
 import json
 import logging
-import multiprocessing
 import re
 from pathlib import Path
 from typing import Iterator, List, NamedTuple, Tuple
@@ -181,30 +180,31 @@ def _setup_vector_file_metadata(f: h5py.File, input_signature: str) -> int:
     return starting_index
 
 
-def _create_hdf5_worker(
-    index_vector_packed: Tuple[str, npt.NDArray[np.float16]]
-) -> Tuple[str, npt.NDArray[np.float16], bytes]:
+def _create_hdf5_worker(index: str, vector: npt.NDArray[np.float16]) -> Tuple[str, io.BytesIO]:
     """
-    Create an in-memory HDF5 file of the input vector and return the serialized bytes.
+    Create an in-memory HDF5 file of the input vector and return the BytesIO object containing that
+    vector.
+    :param index: The index of the frame of the input video that produced these vectors.
+    :param vector: The vector to export.
+    :return: A Tuple (The index forwarded from the input, the BytesIO containing the vector).
     """
-    index, vector = index_vector_packed
 
-    with io.BytesIO() as bytes_io:
+    bytes_io = io.BytesIO()
 
-        with h5py.File(bytes_io, "w") as f:
-            f.create_dataset(
-                name=index,
-                shape=vector.shape,
-                dtype=vector.dtype,
-                data=vector,
-                compression="gzip",
-                compression_opts=9,
-                chunks=True,
-                maxshape=vector.shape,
-            )
-            f.flush()
+    with h5py.File(bytes_io, "w") as f:
+        f.create_dataset(
+            name=index,
+            shape=vector.shape,
+            dtype=vector.dtype,
+            data=vector,
+            compression="gzip",
+            compression_opts=9,
+            chunks=True,
+            maxshape=vector.shape,
+        )
+        f.flush()
 
-        return index, vector, bytes_io.getvalue()
+    return index, bytes_io
 
 
 def write_vector_file_forward(
@@ -213,7 +213,7 @@ def write_vector_file_forward(
     input_signature: str,
 ) -> Iterator[npt.NDArray[np.float16]]:
     """
-    Creates a new iterator that is a compy of the input iterator. Each time the new iterator is
+    Creates a new iterator that is a copy of the input iterator. Each time the new iterator is
     iterated upon, that file is written to disk in the input file.
     :param vector_iterator: Input vectors.
     :param vector_file: Path to the file to write.
@@ -221,35 +221,39 @@ def write_vector_file_forward(
     :return: The input vectors in their original order. Now they've been written to disk.
     """
 
+    processing_vectors, forward_vectors = itertools.tee(vector_iterator, 2)
+
     with h5py.File(vector_file, "a") as f:
 
         starting_index = _setup_vector_file_metadata(f, input_signature)
 
         LOGGER.info(f"Starting to write vectors to: {vector_file}")
 
-        with multiprocessing.Pool() as pool:
+        indices: Iterator[str] = map(str, itertools.count(starting_index))
 
-            indices: Iterator[str] = map(str, itertools.count(starting_index))
+        # You'll think to yourself - wow! I can't believe he's not using a `multiprocessing.Pool`
+        # here! I tried but ran into insurmountable memory leak issues.
+        results_parallelized: Iterator[Tuple[str, io.BytesIO]] = itertools.starmap(
+            _create_hdf5_worker,
+            zip(indices, processing_vectors),
+        )
 
-            results_parallelized: Iterator[Tuple[str, npt.NDArray[np.float16], bytes]] = pool.imap(
-                _create_hdf5_worker, zip(indices, vector_iterator)
-            )
+        for (index, bytes_io), output_vector in zip(results_parallelized, forward_vectors):
+            with h5py.File(bytes_io, "r") as file_from_worker:
 
-            for index, output_vector, bytes_io_data in results_parallelized:
-                with io.BytesIO(bytes_io_data) as bytes_io:
-                    with h5py.File(bytes_io, "r") as file_from_worker:
+                # New group is used to prevent memory leaks caused by metadata
+                # accumulation in the shared group during copy operations.
 
-                        # New group is used to prevent memory leaks caused by metadata
-                        # accumulation in the shared group during copy operations.
+                # Perform the copy operation
+                file_from_worker.copy(
+                    file_from_worker[index],
+                    f.create_group(f"frame_{index}"),
+                    shallow=True,
+                )
 
-                        # Perform the copy operation
-                        file_from_worker.copy(
-                            file_from_worker[index],
-                            f.create_group(f"frame_{index}"),
-                            shallow=True,
-                        )
+                # Flushing is still recommended for safety
+                f.flush()
 
-                        # Flushing is still recommended for safety
-                        f.flush()
+            bytes_io.close()
 
-                yield output_vector
+            yield output_vector
