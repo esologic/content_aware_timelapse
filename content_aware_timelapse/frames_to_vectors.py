@@ -134,14 +134,10 @@ def _compute_vectors(
             LOGGER.debug(f"Got back image batch #{index} from GPU.")
 
     # Create a single thread pool for all image batches
-    with ThreadPoolExecutor(max_workers=len(models)) as executor:
-        # Use a single thread pool for all image batches
-        yield from itertools.chain.from_iterable(
-            map(
-                lambda batch: images_to_feature_vectors(batch, executor),
-                more_itertools.chunked(frame_batches, len(models)),
-            )
-        )
+    with ThreadPoolExecutor(max_workers=len(models)) as e:
+        for batch in more_itertools.chunked(frame_batches, len(models)):
+            yield from images_to_feature_vectors(batch, e)
+            # TODO: We can print reference counts here to look for memory leaks.
 
 
 def frames_to_vectors(

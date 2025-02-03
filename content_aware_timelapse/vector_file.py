@@ -180,7 +180,9 @@ def _setup_vector_file_metadata(f: h5py.File, input_signature: str) -> int:
     return starting_index
 
 
-def _create_hdf5_worker(index: str, vector: npt.NDArray[np.float16]) -> Tuple[str, io.BytesIO]:
+def _create_hdf5_worker(
+    index: str, vector: npt.NDArray[np.float16]
+) -> Tuple[str, bytes, npt.NDArray[np.float16]]:
     """
     Create an in-memory HDF5 file of the input vector and return the BytesIO object containing that
     vector.
@@ -189,22 +191,23 @@ def _create_hdf5_worker(index: str, vector: npt.NDArray[np.float16]) -> Tuple[st
     :return: A Tuple (The index forwarded from the input, the BytesIO containing the vector).
     """
 
-    bytes_io = io.BytesIO()
+    with io.BytesIO() as bytes_io:
+        with h5py.File(bytes_io, "w") as f:
+            f.create_dataset(
+                name=f"vit_base_patch16_224_{index}",
+                shape=vector.shape,
+                dtype=vector.dtype,
+                data=vector,
+                compression="gzip",
+                compression_opts=9,
+                chunks=True,
+                maxshape=vector.shape,
+            )
+            f.flush()
 
-    with h5py.File(bytes_io, "w") as f:
-        f.create_dataset(
-            name=index,
-            shape=vector.shape,
-            dtype=vector.dtype,
-            data=vector,
-            compression="gzip",
-            compression_opts=9,
-            chunks=True,
-            maxshape=vector.shape,
-        )
-        f.flush()
+        output = index, bytes_io.getvalue(), vector
 
-    return index, bytes_io
+    return output
 
 
 def write_vector_file_forward(
@@ -221,8 +224,6 @@ def write_vector_file_forward(
     :return: The input vectors in their original order. Now they've been written to disk.
     """
 
-    processing_vectors, forward_vectors = itertools.tee(vector_iterator, 2)
-
     with h5py.File(vector_file, "a") as f:
 
         starting_index = _setup_vector_file_metadata(f, input_signature)
@@ -231,29 +232,22 @@ def write_vector_file_forward(
 
         indices: Iterator[str] = map(str, itertools.count(starting_index))
 
-        # You'll think to yourself - wow! I can't believe he's not using a `multiprocessing.Pool`
-        # here! I tried but ran into insurmountable memory leak issues.
-        results_parallelized: Iterator[Tuple[str, io.BytesIO]] = itertools.starmap(
-            _create_hdf5_worker,
-            zip(indices, processing_vectors),
-        )
+        results: Iterator[Tuple[str, npt.NDArray[np.float16]]] = zip(indices, vector_iterator)
 
-        for (index, bytes_io), output_vector in zip(results_parallelized, forward_vectors):
-            with h5py.File(bytes_io, "r") as file_from_worker:
+        for index, vector in results:
 
-                # New group is used to prevent memory leaks caused by metadata
-                # accumulation in the shared group during copy operations.
+            # New groups are created to be able to hold different datasets created for
+            # each frame. For superstition reasons this also might prevent memory leaks.
+            index_group = f.create_group(f"frame_{index}")
 
-                # Perform the copy operation
-                file_from_worker.copy(
-                    file_from_worker[index],
-                    f.create_group(f"frame_{index}"),
-                    shallow=True,
-                )
+            index_group.create_dataset(
+                name=f"vit_base_patch16_224_{index}",
+                shape=vector.shape,
+                dtype=vector.dtype,
+                data=vector,
+            )
 
-                # Flushing is still recommended for safety
-                f.flush()
+            # Flushing is still recommended for safety
+            f.flush()
 
-            bytes_io.close()
-
-            yield output_vector
+            yield vector

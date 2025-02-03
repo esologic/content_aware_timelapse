@@ -43,37 +43,45 @@ def calculate_score(packed: Tuple[int, npt.NDArray[np.float16]]) -> _ScoreIndex:
     """
     Calculate a combined score from various metrics of the attention map.
 
-    This version focuses on:
-        * entropy
-        * saliency
-        * variance
+    Metrics:
+        - Entropy: Measures how distributed the attention is.
+        - Variance: Measures spread in attention.
+        - Saliency: Measures maximum attention.
+        - Energy: Measures total attention.
+        - Center-bias: Favors attention focused near the center.
 
-    Without comparing directionality to a previous map.
-
-    :param packed: Arguments packed as a tuple. First item is the index of the vector, second item
-    is the vector.
-    :return: Combined score.
+    :param packed: Tuple of the index and the attention map.
+    :return: Combined score and index.
     """
-
     index, attention_map = packed
-
-    # Convert to float32 to prevent overflow during calculations
     attention_map = attention_map.astype(np.float32)
 
     # Normalize the attention map
-    # normalized_map = attention_map / (np.sum(attention_map) + 1e-8)
+    normalized_map = attention_map / (np.sum(attention_map) + 1e-8)
 
-    # Filter out zeros to avoid log(0) issues in entropy calculation
-    # nonzero_map = normalized_map[normalized_map > 0]
+    # Metrics
+    entropy_score = -np.sum(
+        normalized_map[normalized_map > 0] * np.log(normalized_map[normalized_map > 0] + 1e-8)
+    )
 
-    # Entropy-based score (only for non-zero elements)
-    # _ = -np.sum(nonzero_map * np.log(nonzero_map + 1e-8))
-
-    # Variance-based score (how spread out the attention is)
     variance_score = np.var(attention_map)
     saliency_score = np.max(attention_map)
+    energy_score = np.sum(attention_map)
 
-    combined_score = 0.5 * variance_score + 0.5 * saliency_score
+    # Center-bias
+    h, w = attention_map.shape
+    y, x = np.meshgrid(np.linspace(-1, 1, h), np.linspace(-1, 1, w), indexing="ij")
+    center_weights = np.exp(-(x**2 + y**2))
+    center_bias_score = np.sum(attention_map * center_weights)
+
+    # Combined score
+    combined_score = (
+        0.2 * entropy_score
+        + 0.3 * variance_score
+        + 0.2 * saliency_score
+        + 0.2 * energy_score
+        + 0.1 * center_bias_score
+    )
 
     return _ScoreIndex(score=float(combined_score), idx=index)
 
