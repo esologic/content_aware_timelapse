@@ -70,7 +70,7 @@ def calculate_scores(packed: Tuple[int, npt.NDArray[np.float16]]) -> IndexScores
 
 def select_frames(index_scores: List[IndexScores], num_output_frames: int) -> List[int]:
     """
-    Selects the top `num_output_frames` based on the overall score.
+    Selects the top `num_output_frames` while avoiding clusters.
 
     :param index_scores: List of dictionaries containing frame index and feature scores.
     :param num_output_frames: Number of frames to select.
@@ -78,13 +78,6 @@ def select_frames(index_scores: List[IndexScores], num_output_frames: int) -> Li
     """
 
     def _basic_score(index_score: IndexScores) -> float:
-        """
-        Helper function to go from normalized values to an overall score.
-        :param index_score: Dict containing frame index and feature scores.
-        :return: Overall score as a float.
-        """
-
-        # Combined score
         return (
             0.2 * (1 - index_score["entropy"])
             + 0.3 * index_score["variance"]
@@ -97,17 +90,35 @@ def select_frames(index_scores: List[IndexScores], num_output_frames: int) -> Li
 
     # Normalize the score columns
     scaler = preprocessing.MinMaxScaler()
-
     scaled_df = pd.DataFrame(
         scaler.fit_transform(raw_df), columns=raw_df.columns, index=raw_df.index
     )
-
-    # Compute overall score
     scaled_df["overall_score"] = scaled_df.apply(_basic_score, axis=1)
 
-    # Select top frames based on overall score
-    sorted_by_score: List[int] = scaled_df.sort_values(
-        by="overall_score", ascending=False
-    ).index.to_list()
+    sorted_df = scaled_df.sort_values(by="overall_score", ascending=False)
+    selected_indices: List[int] = []
+    scores = sorted_df["overall_score"].copy()
 
-    return sorted_by_score[:num_output_frames]
+    penalty_radius = max(1, len(sorted_df) // num_output_frames)  # Ensure at least 1
+
+    while len(selected_indices) < num_output_frames and not scores.empty:
+        best_frame = int(scores.idxmax())  # Get highest-score frame
+        selected_indices.append(best_frame)
+
+        # Find its position in sorted_df
+        best_frame_pos = sorted_df.index.get_loc(best_frame)
+
+        # Define a safe penalty window within sorted order
+        nearby_start = max(0, best_frame_pos - penalty_radius)
+        nearby_end = min(len(sorted_df), best_frame_pos + penalty_radius)
+
+        # Extract nearby frame indices from sorted order
+        nearby_frames = sorted_df.index[nearby_start:nearby_end].to_list()
+
+        # Apply penalty (only to existing frames in `scores`)
+        scores.loc[scores.index.intersection(nearby_frames)] *= 0.5
+
+        # Drop the selected frame
+        scores = scores.drop(best_frame)
+
+    return sorted(selected_indices)
