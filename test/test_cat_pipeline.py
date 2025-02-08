@@ -31,7 +31,7 @@ def test_create_timelapse(tmpdir: str) -> None:
         vectors_path=vectors_path,
     )
 
-    video_frames = video_common.frames_in_video(
+    video_frames = video_common.frames_in_video_opencv(
         video_path=output_path,
     )
 

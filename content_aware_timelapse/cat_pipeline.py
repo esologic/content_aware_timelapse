@@ -62,7 +62,9 @@ def create_timelapse(  # pylint: disable=too-many-locals
         frames.
         """
 
-        input_video_frames: List[VideoFrames] = list(map(video_common.frames_in_video, input_files))
+        input_video_frames: List[VideoFrames] = list(
+            map(video_common.frames_in_video_opencv, input_files)
+        )
 
         all_input_frames = itertools.chain.from_iterable(
             [video_frames.frames for video_frames in input_video_frames]

@@ -103,3 +103,6 @@ ENV/
 
 # pycharm
 .idea/
+
+# bigass test video that shouldn't end up on github
+/test/assets/long_video.mkv
