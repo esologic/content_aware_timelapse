@@ -3,7 +3,7 @@ Tests of video interaction code.
 """
 
 from pathlib import Path
-from test.assets import SAMPLE_TIMELAPSE_INPUT_PATH
+from test.assets import LONG_TEST_VIDEO_PATH, SAMPLE_TIMELAPSE_INPUT_PATH
 from typing import Optional
 
 import numpy as np
@@ -14,7 +14,7 @@ from content_aware_timelapse.viderator import video_common
 from content_aware_timelapse.viderator.image_common import ImageResolution, image_resolution
 
 
-@pytest.mark.parametrize("video_path", [SAMPLE_TIMELAPSE_INPUT_PATH])
+@pytest.mark.parametrize("video_path", [SAMPLE_TIMELAPSE_INPUT_PATH, LONG_TEST_VIDEO_PATH])
 @pytest.mark.parametrize("video_fps", [None])
 @pytest.mark.parametrize("_reduce_fps_to", [None, 25, 15])
 @pytest.mark.parametrize(
