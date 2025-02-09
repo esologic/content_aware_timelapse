@@ -36,7 +36,7 @@ def test_frames_in_video(
 
     :param video_path: Passed to functions.
     :param video_fps: Passed to functions.
-    :param reduce_fps_to: Passed to functions.
+    :param _reduce_fps_to: Passed to functions.
     :param width_height: Passed to functions.
     :param starting_frame: Passed to functions.
     :return: None

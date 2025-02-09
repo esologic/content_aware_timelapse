@@ -136,9 +136,12 @@ pre-commit run --all-files
 
 1. A massive inefficiency in the application is how fast video can be read from disk. Currently,
 for the video that we're working with, I'm able to read the video at ~250 frames per second. I
-have tried a few thigns to make this go faster:
+have tried a few things to make this go faster:
+
 * Using `ffmpeg` over openCV.
 * Creating worker processes to parallelize the read.
+* Reading from the video in the background and writing the frames to disk as HDF5 arrays, then
+loading the HDF5 files back into memory when required.
 
 Nothing has been faster than just straight openCV. An in-memory buffer is also used to do this
 load in the background, but then you run into memory limits.

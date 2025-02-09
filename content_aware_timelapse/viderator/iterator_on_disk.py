@@ -6,13 +6,15 @@ Thank u: https://stackoverflow.com/a/70917416
 
 import pickle
 import shutil
+import threading
 from pathlib import Path
 from queue import Queue
 from tempfile import NamedTemporaryFile
-from typing import Any, Iterator, List, NamedTuple, Tuple, TypeVar
+from typing import Any, Iterator, List, NamedTuple, Tuple, TypeVar, cast
 from typing_extensions import Protocol
 
 import h5py
+import more_itertools
 import numpy as np
 from sentinels import NOTHING
 
@@ -26,10 +28,10 @@ class SerializeItem(Protocol):
     Describes a function that writes a given item out to disk.
     """
 
-    def __call__(self, path: Path, item: Any) -> None:  # type: ignore[misc]
+    def __call__(self, path: Path, items: List[Any]) -> None:  # type: ignore[misc]
         """
         :param path: Path to write the serialized object to on disk.
-        :param item: Object to serialize.
+        :param items: List of objects to serialize.
         :return: None
         """
 
@@ -39,10 +41,10 @@ class DeSerializeItem(Protocol):
     Describes a function that loads an item from disk back into memory.
     """
 
-    def __call__(self, path: Path) -> Any:  # type: ignore[misc]
+    def __call__(self, path: Path) -> List[Any]:  # type: ignore[misc]
         """
         :param path: Path to the object on disk.
-        :return: Item loaded back into memory.
+        :return: Items loaded back into memory.
         """
 
 
@@ -55,19 +57,19 @@ class Serializer(NamedTuple):
     deserialize: DeSerializeItem
 
 
-def serialize_pickle(path: Path, item: T) -> None:
+def serialize_pickle(path: Path, items: List[T]) -> None:
     """
     Writes an item to disk using the built-in pickle module.
     :param path: Path to write the serialized object to on disk.
-    :param item: Object to serialize.
+    :param items: List of objects to serialize.
     :return: None
     """
 
     with open(str(path), "wb") as p:
-        pickle.dump(item, p)
+        pickle.dump(items, p)
 
 
-def deserialize_pickle(path: Path) -> Any:  # type: ignore[misc]
+def deserialize_pickle(path: Path) -> List[Any]:  # type: ignore[misc]
     """
     Loads a pickled item from disk using the built-in pickle module.
     :param path: Path to the object on disk.
@@ -75,7 +77,7 @@ def deserialize_pickle(path: Path) -> Any:  # type: ignore[misc]
     """
 
     with open(str(path), "rb") as p:
-        return pickle.load(p)
+        return cast(List[Any], pickle.load(p))  # type: ignore[misc]
 
 
 PICKLE_SERIALIZER = Serializer(serialize=serialize_pickle, deserialize=deserialize_pickle)
@@ -83,34 +85,33 @@ PICKLE_SERIALIZER = Serializer(serialize=serialize_pickle, deserialize=deseriali
 HDF5_DATASET_NAME = "item_dataset"
 
 
-def serialize_hdf5(path: Path, item: RGBInt8ImageType) -> None:
+def serialize_hdf5(path: Path, items: List[RGBInt8ImageType]) -> None:
     """
     Writes an item to disk using hdf5, a format for storing data arrays on disk.
     :param path: Path to write the serialized object to on disk.
-    :param item: Object to serialize.
+    :param items: List of objects to serialize.
     :return: None
     """
 
+    items_array = np.stack(items, axis=0)
     with h5py.File(name=str(path), mode="w") as f:
         f.create_dataset(
             HDF5_DATASET_NAME,
-            shape=item.shape,
-            dtype=item.dtype,
-            data=item,
-            compression="gzip",
-            shuffle=True,
+            shape=items_array.shape,
+            dtype=items_array.dtype,
+            data=items_array,
         )
 
 
-def deserialize_hdf5(path: Path) -> RGBInt8ImageType:
+def deserialize_hdf5(path: Path) -> List[RGBInt8ImageType]:
     """
     Loads an item to disk using hdf5, a format for storing data arrays on disk.
     :param path: Path to the object on disk.
-    :return: Item loaded back into memory.
+    :return: Items loaded back into memory.
     """
 
-    with h5py.File(name=str(path), mode="r") as f:
-        return RGBInt8ImageType(np.array(f[HDF5_DATASET_NAME]))
+    with h5py.File(name=str(path), mode="r", libver="latest") as f:
+        return [RGBInt8ImageType(frame) for frame in np.array(f[HDF5_DATASET_NAME])]
 
 
 HDF5_SERIALIZER = Serializer(serialize=serialize_hdf5, deserialize=deserialize_hdf5)
@@ -127,9 +128,9 @@ def load_queue_items(queue: "Queue[Path]", deserialize: DeSerializeItem) -> Iter
     """
 
     for path in iter(queue.get, NOTHING):
-        output: T = deserialize(path)
+        output: List[T] = deserialize(path)
         path.unlink()
-        yield output
+        yield from output
 
 
 def tee_disk_cache(
@@ -170,7 +171,7 @@ def tee_disk_cache(
             with NamedTemporaryFile(mode="wb", delete=True) as primary_dump:
 
                 primary_path = Path(primary_dump.name)
-                serializer.serialize(path=primary_path, item=item)
+                serializer.serialize(path=primary_path, items=[item])
 
                 for queue in path_queues:
                     with NamedTemporaryFile(mode="wb", delete=False) as secondary_dump:
@@ -187,3 +188,55 @@ def tee_disk_cache(
     return (forward_iterator(),) + tuple(
         load_queue_items(queue, deserialize=serializer.deserialize) for queue in path_queues
     )
+
+
+def disk_buffer(
+    source: Iterator[T],
+    buffer_size: int,
+    serializer: Serializer = HDF5_SERIALIZER,
+) -> Iterator[T]:
+    """
+    Uses a worker thread to read from the source iterator and write the contents to disk. When
+    output is required, items are deserialized and written out. Should be used to maintain pipeline
+    if input iterator is slow and items are large, disk is used rather than memory to cache the
+    items.
+
+    :param source: To buffer and forward.
+    :param buffer_size: The target size of the buffer of items on disk.
+    :param serializer: Defines how the objects will be stored on disk.
+    :return: `source` but having been buffered.
+    """
+
+    path_queue: "Queue[Path | object]" = Queue(maxsize=buffer_size)
+    sentinel = object()  # Unique object to signal the end of the iterator
+
+    def worker() -> None:
+        """
+        Read items from the input and serialize them to disk, putting the locations in the queue.
+        :return: None
+        """
+
+        for chunk_of_items in more_itertools.chunked(source, 250):
+
+            # Don't delete here, we'll delete after consumption.
+            with NamedTemporaryFile(mode="wb", delete=False) as dump:
+                dump_path = Path(dump.name)
+                serializer.serialize(path=dump_path, items=chunk_of_items)
+                path_queue.put(dump_path)
+
+        # input has been exhausted.
+        path_queue.put(sentinel)
+
+    # Start the background thread to read from the input and fill the queue.
+    thread = threading.Thread(target=worker, daemon=True)
+    thread.start()
+
+    while True:
+        serialized_path = path_queue.get()
+        if serialized_path is sentinel:
+            break
+        yield from serializer.deserialize(path=serialized_path)  # type: ignore
+
+        serialized_path.unlink()  # type: ignore[attr-defined]
+
+    thread.join()

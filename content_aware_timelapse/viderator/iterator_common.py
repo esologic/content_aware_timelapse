@@ -102,3 +102,5 @@ def preload_into_memory(source: Iterator[T], buffer_size: int) -> Iterator[T]:
         if output_item is sentinel:
             break
         yield output_item  # type: ignore
+
+    thread.join()
