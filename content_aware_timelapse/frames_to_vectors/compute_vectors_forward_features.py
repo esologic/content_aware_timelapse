@@ -1,35 +1,25 @@
 """
-Computing the feature vectors is the most computationally expensive part of creating these
-timelapses. This module is responsible for offloading that computation to the GPU to improve
-throughput.
-
-Additionally, this module is capable of writing these feature vectors to disk, so they don't have
-to be re-computed for similar runs.
-
-These files, called "vector file"s, are HDF5 files of numpy arrays.
+Defines the forward features method of going from frames to vectors.
 """
 
-import itertools
 import logging
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from pathlib import Path
-from typing import Iterator, List, Optional
+from typing import Iterator, List
 
 import more_itertools
 import numpy as np
-import numpy.typing as npt
 import timm
 import torch
+from numpy import typing as npt
 from PIL import Image
 from torchvision import transforms
 
-from content_aware_timelapse import vector_file
-from content_aware_timelapse.viderator.video_common import ImageSourceType, RGBInt8ImageType
+from content_aware_timelapse.viderator.image_common import RGBInt8ImageType
 
 LOGGER = logging.getLogger(__name__)
 
 
-def _compute_vectors(
+def compute_vectors_forward_features(
     frame_batches: Iterator[List[RGBInt8ImageType]],
 ) -> Iterator[npt.NDArray[np.float16]]:
     """
@@ -138,64 +128,3 @@ def _compute_vectors(
         for batch in more_itertools.chunked(frame_batches, len(models)):
             yield from images_to_feature_vectors(batch, e)
             # TODO: We can print reference counts here to look for memory leaks.
-
-
-def frames_to_vectors(
-    frames: ImageSourceType,
-    intermediate_path: Optional[Path],
-    input_signature: str,
-    batch_size: int,
-    total_input_frames: int,
-) -> Iterator[npt.NDArray[np.float16]]:
-    """
-    Computes feature vectors from an input iterator or frames.
-    Because this process is expensive, even with GPU, the intermediate vectors are written to disk
-    to avoid re-doing the work.
-    :param frames: Frames to process.
-    :param intermediate_path: Vectors file to store intermediate results on disk.
-    :param input_signature: Describes the video in `frames` to ensure we don't read from the wrong
-    intermediate vectors from the input file.
-    :param batch_size: Number of frames to process at once. Should try to utilize all GPU memory.
-    :param total_input_frames: Number of frames in `frames`.
-    :return: Vectors, one per input frame.
-    """
-
-    if intermediate_path is not None:
-
-        intermediate = vector_file.read_vector_file(
-            vector_file=intermediate_path, input_signature=input_signature
-        )
-
-        LOGGER.info(f"Read in {intermediate.length} intermediate vectors from file.")
-
-        fresh_tensors: Iterator[npt.NDArray[np.float16]] = iter([])
-
-        if intermediate.length < total_input_frames:
-
-            LOGGER.info(f"Need to compute {total_input_frames-intermediate.length} new vectors.")
-
-            # Skip to the unprocessed section of the input.
-            unprocessed_frames: ImageSourceType = itertools.islice(
-                frames, intermediate.length, None
-            )
-
-            # Compute new vectors, writing the results to disk.
-            fresh_tensors = _compute_vectors(
-                frame_batches=more_itertools.chunked(unprocessed_frames, batch_size)
-            )
-
-            fresh_tensors = vector_file.write_vector_file_forward(
-                vector_iterator=fresh_tensors,
-                vector_file=intermediate_path,
-                input_signature=input_signature,
-            )
-
-        yield from itertools.chain.from_iterable(
-            (
-                intermediate.iterator,  # first output any vectors from disk.
-                fresh_tensors,  # second, compute any vectors not found on disk.
-            )
-        )
-
-    else:
-        yield from _compute_vectors(frame_batches=more_itertools.chunked(frames, batch_size))

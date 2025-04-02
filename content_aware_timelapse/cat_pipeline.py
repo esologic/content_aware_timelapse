@@ -11,7 +11,11 @@ import numpy as np
 from numpy import typing as npt
 from tqdm import tqdm
 
-from content_aware_timelapse import frames_to_vectors, vector_scoring
+import content_aware_timelapse.frames_to_vectors.conversion
+from content_aware_timelapse import vector_scoring
+from content_aware_timelapse.frames_to_vectors.compute_vectors_forward_features import (
+    compute_vectors_forward_features,
+)
 from content_aware_timelapse.vector_file import create_videos_signature
 from content_aware_timelapse.vector_scoring import IndexScores
 from content_aware_timelapse.viderator import iterator_common, video_common
@@ -81,14 +85,17 @@ def create_timelapse(  # pylint: disable=too-many-locals
 
     LOGGER.info(f"Total frames to process: {frames_count.total_frame_count}.")
 
-    vectors: Iterator[npt.NDArray[np.float16]] = frames_to_vectors.frames_to_vectors(
-        frames=iterator_common.preload_into_memory(
-            source=frames_count.frames, buffer_size=batch_size * 3
-        ),
-        intermediate_path=vectors_path,
-        input_signature=input_signature,
-        batch_size=batch_size,
-        total_input_frames=frames_count.total_frame_count,
+    vectors: Iterator[npt.NDArray[np.float16]] = (
+        content_aware_timelapse.frames_to_vectors.conversion.frames_to_vectors(
+            frames=iterator_common.preload_into_memory(
+                source=frames_count.frames, buffer_size=batch_size * 3
+            ),
+            intermediate_path=vectors_path,
+            input_signature=input_signature,
+            batch_size=batch_size,
+            total_input_frames=frames_count.total_frame_count,
+            convert_batches=compute_vectors_forward_features,
+        )
     )
 
     LOGGER.debug("Starting to sort output vectors by score.")
