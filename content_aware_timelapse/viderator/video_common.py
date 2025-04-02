@@ -357,6 +357,8 @@ def frames_in_video_ffmpeg(  # pylint: disable=too-many-locals
     starting_frame: Optional[int] = None,
 ) -> VideoFrames:
     """
+    Deprecated!
+
     Creates an interface to read each frame from a video into local memory for
     analysis + manipulation. Uses ffmpeg under the hood to get the frames.
 

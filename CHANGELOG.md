@@ -1,9 +1,12 @@
 # Changelog
 
-0.2.1 - (2025-01-19)
+0.3.0 - (2025-04-02)
 ------------------
 
-* Fixed output parallelization, needed to swtich format of vector file hdf5.
+* Fixed output parallelization, needed to switch format of vector file hdf5.
+* Better defined the scoring process types and test.
+* Tested with a bunch of different scoring weights but never found anything that worked 
+exceptionally well. Going to move to other approaches in subsequent versions. 
 
 
 0.2.0 - (2025-01-18)

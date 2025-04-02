@@ -133,7 +133,6 @@ def create_timelapse(  # pylint: disable=too-many-locals
             ),
         )
     )
-
     video_common.write_source_to_disk_consume(
         source=most_interesting_frames,
         video_path=output_path,
