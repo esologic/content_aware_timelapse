@@ -58,6 +58,10 @@ sentinels = "^1.0.0"
 joblib = "^1.4.2"
 pandas = "^2.2.3"
 scikit-learn = "^1.6.1"
+pkginfo = "^1.12.1.2"
+clip = {git = "https://github.com/openai/CLIP.git"}
+ftfy = "^6.3.1"
+regex = "^2024.11.6"
 
 [tool.poetry.group.dev.dependencies]
 black = "*"

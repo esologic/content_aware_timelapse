@@ -16,6 +16,7 @@ from content_aware_timelapse import vector_scoring
 from content_aware_timelapse.frames_to_vectors.compute_vectors_forward_features import (
     compute_vectors_forward_features,
 )
+from content_aware_timelapse.frames_to_vectors.compute_vectors_clip import compute_vectors_clip
 from content_aware_timelapse.vector_file import create_videos_signature
 from content_aware_timelapse.vector_scoring import IndexScores
 from content_aware_timelapse.viderator import iterator_common, video_common
@@ -94,7 +95,7 @@ def create_timelapse(  # pylint: disable=too-many-locals
             input_signature=input_signature,
             batch_size=batch_size,
             total_input_frames=frames_count.total_frame_count,
-            convert_batches=compute_vectors_forward_features,
+            convert_batches=compute_vectors_clip,
         )
     )
 

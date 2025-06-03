@@ -31,5 +31,7 @@ python3.10 -m venv .venv
 source ./.venv/bin/activate
 pip install --upgrade pip
 
+export PYTHON_KEYRING_BACKEND=keyring.backends.fail.Keyring
+
 # This doesn't work, need to double check that poetry is in the path!
 poetry install --sync --no-ansi

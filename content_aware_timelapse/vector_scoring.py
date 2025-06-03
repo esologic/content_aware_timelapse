@@ -24,7 +24,7 @@ class IndexScores(TypedDict):
     center_bias: float
 
 
-def calculate_scores(packed: Tuple[int, npt.NDArray[np.float16]]) -> IndexScores:
+def calculate_scores_old(packed: Tuple[int, npt.NDArray[np.float16]]) -> IndexScores:
     """
     Calculate a combined score from various metrics of the attention map.
 
@@ -67,6 +67,41 @@ def calculate_scores(packed: Tuple[int, npt.NDArray[np.float16]]) -> IndexScores
         center_bias=center_bias_score,
     )
 
+def calculate_scores(packed: Tuple[int, npt.NDArray[np.float16]]) -> IndexScores:
+    """
+    Calculate a combined score from various metrics of the CLIP embedding.
+
+    Metrics:
+        - Entropy: Measures how distributed the embedding values are.
+        - Variance: Measures spread in embedding values.
+        - Saliency: Measures maximum embedding value.
+        - Energy: Measures total embedding magnitude (L2 norm).
+
+    :param packed: Tuple of the index and the CLIP embedding vector.
+    :return: Combined score and index.
+    """
+    index, embedding = packed
+    embedding = embedding.astype(np.float32)  # Convert to higher precision for calculations
+
+    # Normalize embedding
+    norm_embedding = embedding / (np.linalg.norm(embedding) + 1e-8)
+
+    entropy_score = -np.sum(
+        norm_embedding[norm_embedding > 0] * np.log(norm_embedding[norm_embedding > 0] + 1e-8)
+    )
+
+    variance_score = np.var(embedding)
+    saliency_score = np.max(embedding)
+    energy_score = np.linalg.norm(embedding)  # L2 norm as energy measure
+
+    return IndexScores(
+        frame_index=index,
+        entropy=entropy_score,
+        variance=float(variance_score),
+        saliency=float(saliency_score),
+        energy=float(energy_score),
+        center_bias=0.0,  # Center-bias not applicable for 1D embeddings
+    )
 
 def select_frames(index_scores: List[IndexScores], num_output_frames: int) -> List[int]:
     """
@@ -83,7 +118,7 @@ def select_frames(index_scores: List[IndexScores], num_output_frames: int) -> Li
         :param index_score:
         :return:
         """
-        return (1 - index_score["entropy"]) + index_score["saliency"] + index_score["energy"]
+        return index_score["saliency"]
 
     raw_df = pd.DataFrame.from_records(index_scores).set_index("frame_index")
 
