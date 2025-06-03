@@ -6,14 +6,23 @@ from pathlib import Path
 from tempfile import NamedTemporaryFile
 from test.test_viderator import viderator_test_common
 
+import pytest
+
 import content_aware_timelapse.frames_to_vectors.conversion
-from content_aware_timelapse.frames_to_vectors.compute_vectors_forward_features import (
-    compute_vectors_forward_features,
+from content_aware_timelapse.frames_to_vectors.conversion_types import ConvertBatchesFunction
+from content_aware_timelapse.frames_to_vectors.vector_computation.compute_vectors_clip import (
+    compute_vectors_clip,
+)
+from content_aware_timelapse.frames_to_vectors.vector_computation.compute_vectors_vit import (
+    compute_vectors_vit_forward_features,
 )
 from content_aware_timelapse.viderator.video_common import ImageResolution
 
 
-def test_frames_to_vectors_pipeline() -> None:
+@pytest.mark.parametrize(
+    "convert_batches_function", [compute_vectors_vit_forward_features, compute_vectors_clip]
+)
+def test_frames_to_vectors_pipeline(convert_batches_function: ConvertBatchesFunction) -> None:
     """
     Test that sanity-checks loading of the model into the GPU and vectorizing an image.
     :return: None
@@ -30,9 +39,8 @@ def test_frames_to_vectors_pipeline() -> None:
                 input_signature="test signature",
                 batch_size=1,
                 total_input_frames=1,
-                convert_batches=compute_vectors_forward_features,
+                convert_batches=convert_batches_function,
             )
         )
 
-        assert output.shape == (197, 768)
         assert output.any() and output.all()

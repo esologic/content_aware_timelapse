@@ -1,18 +1,25 @@
-import torch
-import clip
-from PIL import Image
-from concurrent.futures import ThreadPoolExecutor, as_completed
-import numpy as np
-from typing import Iterator, List
-import more_itertools
+"""
+Uses clip embeddings as vectors.
+"""
+
 import logging
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from typing import Callable, Iterator, List, Tuple, cast
+
+import clip
+import more_itertools
+import numpy as np
 import numpy.typing as npt
+import torch
+from PIL import Image
+
+from content_aware_timelapse.viderator.image_common import RGBInt8ImageType
 
 LOGGER = logging.getLogger(__name__)
 
 
 def compute_vectors_clip(
-        frame_batches: Iterator[List[np.ndarray]],
+    frame_batches: Iterator[List[RGBInt8ImageType]],
 ) -> Iterator[npt.NDArray[np.float16]]:
     """
     Computes CLIP embeddings for input frames using GPU acceleration if available.
@@ -23,7 +30,9 @@ def compute_vectors_clip(
 
     LOGGER.debug(f"Detected {torch.cuda.device_count()} GPUs. Loading CLIP Model")
 
-    def load_clip_model(gpu_index: int) -> torch.nn.Module:
+    def load_clip_model(
+        gpu_index: int,
+    ) -> Tuple[torch.nn.Module, Callable[[Image.Image], torch.Tensor]]:
         """
         Loads the CLIP model onto the specified GPU.
 
@@ -43,7 +52,9 @@ def compute_vectors_clip(
     models = [load_clip_model(i) for i in range(torch.cuda.device_count())]
 
     def process_images_for_model(
-            image_batch: List[np.ndarray], model: torch.nn.Module, preprocess
+        image_batch: List[RGBInt8ImageType],
+        model: torch.nn.Module,
+        preprocess: Callable[[Image.Image], torch.Tensor],
     ) -> torch.Tensor:
         """
         Preprocesses images and extracts CLIP feature vectors.
@@ -63,11 +74,11 @@ def compute_vectors_clip(
         tensor_batch = tensor_batch.to(device)
 
         with torch.no_grad():
-            return model.encode_image(tensor_batch).half()
+            return cast(torch.Tensor, model.encode_image(tensor_batch).half())
 
     def images_to_feature_vectors(
-            image_batches: List[List[np.ndarray]], executor: ThreadPoolExecutor
-    ) -> Iterator[np.ndarray]:
+        image_batches: List[List[RGBInt8ImageType]], executor: ThreadPoolExecutor
+    ) -> Iterator[npt.NDArray[np.float16]]:
         """
         Converts batches of images into CLIP feature vectors using multiple GPUs.
 
@@ -76,8 +87,8 @@ def compute_vectors_clip(
         :return: Iterator of feature vectors.
         """
         futures = [
-            executor.submit(process_images_for_model, batch, model, preprocess)
-            for (batch, (model, preprocess)) in zip(image_batches, models)
+            executor.submit(process_images_for_model, image_batch, model, preprocess)
+            for (image_batch, (model, preprocess)) in zip(image_batches, models)
         ]
 
         for index, future in enumerate(as_completed(futures)):

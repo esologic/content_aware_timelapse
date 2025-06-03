@@ -13,10 +13,9 @@ from tqdm import tqdm
 
 import content_aware_timelapse.frames_to_vectors.conversion
 from content_aware_timelapse import vector_scoring
-from content_aware_timelapse.frames_to_vectors.compute_vectors_forward_features import (
-    compute_vectors_forward_features,
+from content_aware_timelapse.frames_to_vectors.vector_computation.compute_vectors_clip import (
+    compute_vectors_clip,
 )
-from content_aware_timelapse.frames_to_vectors.compute_vectors_clip import compute_vectors_clip
 from content_aware_timelapse.vector_file import create_videos_signature
 from content_aware_timelapse.vector_scoring import IndexScores
 from content_aware_timelapse.viderator import iterator_common, video_common

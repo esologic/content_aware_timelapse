@@ -19,7 +19,7 @@ from content_aware_timelapse.viderator.image_common import RGBInt8ImageType
 LOGGER = logging.getLogger(__name__)
 
 
-def compute_vectors_forward_features(
+def compute_vectors_vit_forward_features(
     frame_batches: Iterator[List[RGBInt8ImageType]],
 ) -> Iterator[npt.NDArray[np.float16]]:
     """

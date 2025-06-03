@@ -67,6 +67,7 @@ def calculate_scores_old(packed: Tuple[int, npt.NDArray[np.float16]]) -> IndexSc
         center_bias=center_bias_score,
     )
 
+
 def calculate_scores(packed: Tuple[int, npt.NDArray[np.float16]]) -> IndexScores:
     """
     Calculate a combined score from various metrics of the CLIP embedding.
@@ -102,6 +103,7 @@ def calculate_scores(packed: Tuple[int, npt.NDArray[np.float16]]) -> IndexScores
         energy=float(energy_score),
         center_bias=0.0,  # Center-bias not applicable for 1D embeddings
     )
+
 
 def select_frames(index_scores: List[IndexScores], num_output_frames: int) -> List[int]:
     """
