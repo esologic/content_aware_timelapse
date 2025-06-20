@@ -19,7 +19,7 @@ from content_aware_timelapse.viderator.image_common import RGBInt8ImageType
 LOGGER = logging.getLogger(__name__)
 
 
-def compute_vectors_vit_forward_features(
+def compute_vectors_vit_cls(
     frame_batches: Iterator[List[RGBInt8ImageType]],
 ) -> Iterator[npt.NDArray[np.float16]]:
     """
@@ -120,8 +120,16 @@ def compute_vectors_vit_forward_features(
 
         # Collect results as they are completed
         for index, future in enumerate(as_completed(futures)):
-            yield from future.result().cpu().numpy()
-            LOGGER.debug(f"Got back image batch #{index} from GPU.")
+            # Extract the CLS token embedding for each image in the batch.
+            # The CLS token is at index 0 of the second dimension.
+            cls_embeddings_batch = future.result()[:, 0, :].cpu().numpy()
+
+            # Yield each CLS embedding individually
+            yield from cls_embeddings_batch
+            LOGGER.debug(
+                f"Got back image batch #{index} from GPU. "
+                f"Yielded CLS embeddings for {cls_embeddings_batch.shape[0]} images."
+            )
 
     # Create a single thread pool for all image batches
     with ThreadPoolExecutor(max_workers=len(models)) as e:

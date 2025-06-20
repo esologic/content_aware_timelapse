@@ -9,10 +9,11 @@ from typing import Callable, Iterator, List, Tuple, cast
 import clip
 import more_itertools
 import numpy as np
-import numpy.typing as npt
 import torch
+from numpy import typing as npt
 from PIL import Image
 
+from content_aware_timelapse.vector_scoring import IndexScores
 from content_aware_timelapse.viderator.image_common import RGBInt8ImageType
 
 LOGGER = logging.getLogger(__name__)
@@ -99,3 +100,35 @@ def compute_vectors_clip(
     with ThreadPoolExecutor(max_workers=len(models)) as e:
         for batch in more_itertools.chunked(frame_batches, len(models)):
             yield from images_to_feature_vectors(batch, e)
+
+
+def calculate_scores_clip(packed: Tuple[int, npt.NDArray[np.float16]]) -> IndexScores:
+    """
+    Calculate a combined score from various metrics of the CLIP embedding.
+
+    Metrics:
+        - Entropy: Measures how distributed the embedding values are.
+        - Variance: Measures spread in embedding values.
+        - Saliency: Measures maximum embedding value.
+        - Energy: Measures total embedding magnitude (L2 norm).
+
+    :param packed: Tuple of the index and the CLIP embedding vector.
+    :return: Combined score and index.
+    """
+    index, embedding = packed
+    embedding = embedding.astype(np.float32)  # Convert to higher precision for calculations
+
+    # Normalize embedding
+    norm_embedding = embedding / (np.linalg.norm(embedding) + 1e-8)
+
+    entropy_score = -np.sum(
+        norm_embedding[norm_embedding > 0] * np.log(norm_embedding[norm_embedding > 0] + 1e-8)
+    )
+
+    return IndexScores(
+        frame_index=index,
+        entropy=entropy_score,
+        variance=float(np.var(embedding)),
+        saliency=float(np.max(embedding)),
+        energy=float(np.linalg.norm(embedding)),
+    )

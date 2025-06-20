@@ -13,8 +13,8 @@ from tqdm import tqdm
 
 import content_aware_timelapse.frames_to_vectors.conversion
 from content_aware_timelapse import vector_scoring
-from content_aware_timelapse.frames_to_vectors.vector_computation.compute_vectors_clip import (
-    compute_vectors_clip,
+from content_aware_timelapse.frames_to_vectors.vector_computation.compute_vectors_vit import (
+    compute_vectors_vit_cls,
 )
 from content_aware_timelapse.vector_file import create_videos_signature
 from content_aware_timelapse.vector_scoring import IndexScores
@@ -41,6 +41,7 @@ def create_timelapse(  # pylint: disable=too-many-locals
     output_fps: float,
     batch_size: int,
     vectors_path: Optional[Path],
+    plot_path: Optional[Path],
 ) -> None:
     """
     Create a timelapse based on the most interesting parts of a video rather than blindly
@@ -54,6 +55,7 @@ def create_timelapse(  # pylint: disable=too-many-locals
     :param output_fps: See click docs.
     :param batch_size: See click docs.
     :param vectors_path: See click docs.
+    :param plot_path: See click docs.
     :return: None
     """
 
@@ -94,7 +96,7 @@ def create_timelapse(  # pylint: disable=too-many-locals
             input_signature=input_signature,
             batch_size=batch_size,
             total_input_frames=frames_count.total_frame_count,
-            convert_batches=compute_vectors_clip,
+            convert_batches=compute_vectors_vit_cls,
         )
     )
 
@@ -115,7 +117,9 @@ def create_timelapse(  # pylint: disable=too-many-locals
 
     most_interesting_indices: Set[int] = set(
         vector_scoring.select_frames(
-            index_scores=score_indexes, num_output_frames=int(duration * output_fps)
+            index_scores=score_indexes,
+            num_output_frames=int(duration * output_fps),
+            plot_path=plot_path,
         )
     )
 

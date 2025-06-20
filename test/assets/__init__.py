@@ -15,7 +15,30 @@ BORING_IMAGES_PATHS: List[Path] = [
     _ASSETS_DIRECTORY / "boring_2.jpg",
 ]
 
+MIDDLE_IMAGES_PATHS: List[Path] = [
+    _ASSETS_DIRECTORY / "middle_1.jpg",
+]
+
 INTERESTING_IMAGES_PATHS: List[Path] = [
     _ASSETS_DIRECTORY / "interesting_1.jpg",
     _ASSETS_DIRECTORY / "interesting_2.jpg",
+    _ASSETS_DIRECTORY / "interesting_3.jpg",
+]
+
+SORTED_BENCH_SCENES_PATHS: List[Path] = [
+    _ASSETS_DIRECTORY / "bench_scene_out_of_focus.png",
+    _ASSETS_DIRECTORY / "bench_scene_in_focus.png",
+]
+
+SORTED_STREAM_SOFTWARE_PATHS: List[Path] = [
+    _ASSETS_DIRECTORY / "stream_software_obscured_1.png",
+    _ASSETS_DIRECTORY / "stream_software.png",
+]
+
+SORTED_STREAM_GENERIC_PATHS: List[Path] = [
+    _ASSETS_DIRECTORY / "stream_software_obscured_1.png",
+    _ASSETS_DIRECTORY / "bench_scene_out_of_focus.png",
+    _ASSETS_DIRECTORY / "bench_scene_in_focus.png",
+    _ASSETS_DIRECTORY / "stream_software.png",
+    _ASSETS_DIRECTORY / "stream_cad_1.png",
 ]

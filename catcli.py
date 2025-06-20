@@ -71,6 +71,16 @@ LOGGER = logging.getLogger(__name__)
     help="Intermediate vectors will be written to this path. Can be used to re-run.",
     required=False,
 )
+@click.option(
+    "--viz-path",
+    "-z",
+    type=click.Path(file_okay=True, dir_okay=False, writable=True, path_type=Path),
+    help=(
+        "A visualisation describing the timelapse creation "
+        "process will be written to this path if given"
+    ),
+    required=False,
+)
 def main(  # pylint: disable=too-many-locals
     input_files: List[Path],
     output_path: Path,
@@ -78,6 +88,7 @@ def main(  # pylint: disable=too-many-locals
     output_fps: float,
     batch_size: int,
     vectors_path: Optional[Path],
+    viz_path: Optional[Path],
 ) -> None:
     """
     Create a timelapse based on the most interesting parts of a video rather than blindly
@@ -91,6 +102,7 @@ def main(  # pylint: disable=too-many-locals
     :param output_fps: See click docs.
     :param batch_size: See click docs.
     :param vectors_path: See click docs.
+    :param viz_path: See click docs.
     :return: None
     """
 
@@ -101,6 +113,7 @@ def main(  # pylint: disable=too-many-locals
         output_fps=output_fps,
         batch_size=batch_size,
         vectors_path=vectors_path,
+        plot_path=viz_path,
     )
 
 

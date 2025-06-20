@@ -2,43 +2,48 @@
 End -> End Testing of the vector computation and sorting.
 """
 
-import itertools
-from test.assets import BORING_IMAGES_PATHS, INTERESTING_IMAGES_PATHS
-from test.test_viderator import viderator_test_common
+from pathlib import Path
+from test.assets import (
+    SORTED_BENCH_SCENES_PATHS,
+    SORTED_STREAM_GENERIC_PATHS,
+    SORTED_STREAM_SOFTWARE_PATHS,
+)
 from typing import List
+
+import pytest
 
 import content_aware_timelapse.frames_to_vectors.conversion
 from content_aware_timelapse import vector_scoring
-from content_aware_timelapse.frames_to_vectors.vector_computation.compute_vectors_clip import (
-    compute_vectors_clip,
+from content_aware_timelapse.frames_to_vectors.vector_computation.compute_vectors_vit import (
+    compute_vectors_vit_cls,
 )
 from content_aware_timelapse.vector_scoring import IndexScores
 from content_aware_timelapse.viderator import image_common
-from content_aware_timelapse.viderator.video_common import ImageResolution
+from content_aware_timelapse.viderator.image_common import ImageSourceType
 
 
-def test_sorting_converted_vectors() -> None:
+@pytest.mark.parametrize(
+    "frames",
+    [
+        list(map(image_common.load_rgb_image, SORTED_BENCH_SCENES_PATHS)),
+        list(map(image_common.load_rgb_image, SORTED_STREAM_SOFTWARE_PATHS)),
+        list(map(image_common.load_rgb_image, SORTED_STREAM_GENERIC_PATHS)),
+    ],
+)
+def test_sorting_converted_vectors(frames: ImageSourceType) -> None:
     """
     Sanity check using library assets to assume that scoring and sorting images works as expected.
+    :param frames: Should be sorted in order of interesting-ness, with the most interesting frame
+    first.
     :return: None
     """
 
     vectors = content_aware_timelapse.frames_to_vectors.conversion.frames_to_vectors(
-        frames=itertools.chain.from_iterable(
-            [
-                viderator_test_common.create_black_frames_iterator(
-                    image_resolution=ImageResolution(1620, 1080), count=1
-                ),
-                map(
-                    image_common.load_rgb_image,
-                    itertools.chain.from_iterable([BORING_IMAGES_PATHS, INTERESTING_IMAGES_PATHS]),
-                ),
-            ]
-        ),
+        frames=frames,
         input_signature="test signature",
         batch_size=1,
         total_input_frames=1,
-        convert_batches=compute_vectors_clip,
+        convert_batches=compute_vectors_vit_cls,
         intermediate_path=None,
     )
 
@@ -46,7 +51,10 @@ def test_sorting_converted_vectors() -> None:
         map(vector_scoring.calculate_scores, enumerate(vectors))
     )
 
-    print("stop")
+    indices = vector_scoring._score_and_sort_frames(  # pylint: disable=protected-access
+        index_scores=score_indexes,
+        num_output_frames=len(score_indexes) - 2,
+        plot_path=Path("./fig.png"),
+    )
 
-    for score in score_indexes:
-        print(score)
+    assert list(sorted(indices, reverse=True)) == indices
