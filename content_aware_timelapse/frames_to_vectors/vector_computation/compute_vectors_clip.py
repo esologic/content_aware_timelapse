@@ -13,13 +13,14 @@ import torch
 from numpy import typing as npt
 from PIL import Image
 
-from content_aware_timelapse.vector_scoring import IndexScores
+from content_aware_timelapse.frames_to_vectors.conversion_types import ConversionScoringFunctions
+from content_aware_timelapse.frames_to_vectors.vector_scoring import IndexScores
 from content_aware_timelapse.viderator.image_common import RGBInt8ImageType
 
 LOGGER = logging.getLogger(__name__)
 
 
-def compute_vectors_clip(
+def _compute_vectors_clip(
     frame_batches: Iterator[List[RGBInt8ImageType]],
 ) -> Iterator[npt.NDArray[np.float16]]:
     """
@@ -102,7 +103,7 @@ def compute_vectors_clip(
             yield from images_to_feature_vectors(batch, e)
 
 
-def calculate_scores_clip(packed: Tuple[int, npt.NDArray[np.float16]]) -> IndexScores:
+def _calculate_scores_clip(packed: Tuple[int, npt.NDArray[np.float16]]) -> IndexScores:
     """
     Calculate a combined score from various metrics of the CLIP embedding.
 
@@ -115,6 +116,7 @@ def calculate_scores_clip(packed: Tuple[int, npt.NDArray[np.float16]]) -> IndexS
     :param packed: Tuple of the index and the CLIP embedding vector.
     :return: Combined score and index.
     """
+
     index, embedding = packed
     embedding = embedding.astype(np.float32)  # Convert to higher precision for calculations
 
@@ -132,3 +134,8 @@ def calculate_scores_clip(packed: Tuple[int, npt.NDArray[np.float16]]) -> IndexS
         saliency=float(np.max(embedding)),
         energy=float(np.linalg.norm(embedding)),
     )
+
+
+CONVERT_CLIP = ConversionScoringFunctions(
+    conversion=_compute_vectors_clip, scoring=_calculate_scores_clip
+)

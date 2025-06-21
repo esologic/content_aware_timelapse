@@ -5,11 +5,23 @@ End-to-end tests of timelapse creation.
 from pathlib import Path
 from test.assets import SAMPLE_TIMELAPSE_INPUT_PATH
 
+import pytest
+
 from content_aware_timelapse import cat_pipeline
+from content_aware_timelapse.frames_to_vectors.conversion_types import ConversionScoringFunctions
+from content_aware_timelapse.frames_to_vectors.vector_computation.compute_vectors_clip import (
+    CONVERT_CLIP,
+)
+from content_aware_timelapse.frames_to_vectors.vector_computation.compute_vectors_vit import (
+    CONVERT_VIT_CLS,
+)
 from content_aware_timelapse.viderator import video_common
 
 
-def test_create_timelapse(tmpdir: str) -> None:
+@pytest.mark.parametrize("conversion_scoring_functions", [CONVERT_CLIP, CONVERT_VIT_CLS])
+def test_create_timelapse(
+    tmpdir: str, conversion_scoring_functions: ConversionScoringFunctions
+) -> None:
     """
     Using a test asset, runs the main `create_timelapse` function and inspects the output.
     :param tmpdir: Test fixture.
@@ -28,6 +40,7 @@ def test_create_timelapse(tmpdir: str) -> None:
         duration=duration,
         output_fps=output_fps,
         batch_size=100,
+        conversion_scoring_functions=conversion_scoring_functions,
         vectors_path=vectors_path,
         plot_path=None,
     )

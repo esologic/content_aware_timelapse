@@ -1,5 +1,15 @@
 # Changelog
 
+0.4.0 - (2025-06-21)
+------------------
+
+* Added a CLI switch to go between multiple "vectorization backends". Right now VIT and CLIP.
+* Switched to VIT CLS token analysis for VIT Mode.
+* Added CLIP analysis as a backend.
+* Implemented first pass at a radius deselection method to avoid clusters in the output videos.
+* Added unit tests that actually verify interesting frames are selected over boring ones.
+* Added sensible weights for the different vector score results.
+
 0.3.0 - (2025-04-02)
 ------------------
 

@@ -12,12 +12,11 @@ from numpy import typing as npt
 from tqdm import tqdm
 
 import content_aware_timelapse.frames_to_vectors.conversion
-from content_aware_timelapse import vector_scoring
-from content_aware_timelapse.frames_to_vectors.vector_computation.compute_vectors_vit import (
-    compute_vectors_vit_cls,
-)
+import content_aware_timelapse.frames_to_vectors.vector_computation.compute_vectors_vit
+from content_aware_timelapse.frames_to_vectors import vector_scoring
+from content_aware_timelapse.frames_to_vectors.conversion_types import ConversionScoringFunctions
+from content_aware_timelapse.frames_to_vectors.vector_scoring import IndexScores
 from content_aware_timelapse.vector_file import create_videos_signature
-from content_aware_timelapse.vector_scoring import IndexScores
 from content_aware_timelapse.viderator import iterator_common, video_common
 from content_aware_timelapse.viderator.image_common import ImageSourceType
 from content_aware_timelapse.viderator.video_common import VideoFrames
@@ -40,22 +39,27 @@ def create_timelapse(  # pylint: disable=too-many-locals
     duration: float,
     output_fps: float,
     batch_size: int,
+    conversion_scoring_functions: ConversionScoringFunctions,
     vectors_path: Optional[Path],
     plot_path: Optional[Path],
 ) -> None:
     """
-    Create a timelapse based on the most interesting parts of a video rather than blindly
-    down-selecting frames.
+    Main function to create the timelapse, defines the video processing pipeline.
 
-    \f
-
-    :param input_files: See click docs.
-    :param output_path: See click docs.
-    :param duration: See click docs.
-    :param output_fps: See click docs.
-    :param batch_size: See click docs.
-    :param vectors_path: See click docs.
-    :param plot_path: See click docs.
+    :param input_files: Videos from user to convert.
+    :param output_path: Path to write the resulting output video to.
+    :param duration: Desired duration for the output video in seconds.
+    :param output_fps: Desired output video fps.
+    :param batch_size: The number of frames from the input video to vectorize at once. The
+    vectorization functions are responsible for doing the parallel loads onto the GPU.
+    :param conversion_scoring_functions: A tuple of callables that contain the vectorization
+    function and the function to score those vectors. Lets us swap the backend between different
+    CV processes.
+    :param vectors_path: Path to the vectors file. This file is an on-disk copy of each of the
+    vectorization results for the input frames. This lets us recover from a run that has to be
+    ended early, or lets us re-run selection without having to burn more compute.
+    :param plot_path: If given, a visualization of the selection process is written to this file
+    to aid in debugging.
     :return: None
     """
 
@@ -96,7 +100,7 @@ def create_timelapse(  # pylint: disable=too-many-locals
             input_signature=input_signature,
             batch_size=batch_size,
             total_input_frames=frames_count.total_frame_count,
-            convert_batches=compute_vectors_vit_cls,
+            convert_batches=conversion_scoring_functions.conversion,
         )
     )
 
@@ -104,7 +108,7 @@ def create_timelapse(  # pylint: disable=too-many-locals
 
     score_indexes: List[IndexScores] = list(
         map(
-            vector_scoring.calculate_scores,
+            conversion_scoring_functions.scoring,
             tqdm(
                 enumerate(vectors),
                 total=frames_count.total_frame_count,
@@ -144,6 +148,7 @@ def create_timelapse(  # pylint: disable=too-many-locals
             ),
         )
     )
+
     video_common.write_source_to_disk_consume(
         source=most_interesting_frames,
         video_path=output_path,

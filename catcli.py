@@ -1,12 +1,20 @@
 """Main module."""
 
 import logging
+from enum import Enum
 from pathlib import Path
 from typing import List, Optional
 
 import click
 
 from content_aware_timelapse.cat_pipeline import create_timelapse
+from content_aware_timelapse.cli_common import create_enum_option
+from content_aware_timelapse.frames_to_vectors.vector_computation.compute_vectors_clip import (
+    CONVERT_CLIP,
+)
+from content_aware_timelapse.frames_to_vectors.vector_computation.compute_vectors_vit import (
+    CONVERT_VIT_CLS,
+)
 
 LOGGER_FORMAT = "[%(asctime)s - %(process)s - %(name)20s - %(levelname)s] %(message)s"
 LOGGER_DATE_FORMAT = "%Y-%m-%d %H:%M:%S"
@@ -18,6 +26,15 @@ logging.basicConfig(
 )
 
 LOGGER = logging.getLogger(__name__)
+
+
+class VectorBackend(str, Enum):
+    """
+    For the CLI, string representations of the different vectorization backends.
+    """
+
+    vit = "vit"
+    clip = "clip"
 
 
 @click.command()
@@ -64,6 +81,12 @@ LOGGER = logging.getLogger(__name__)
     default=600,
     show_default=True,
 )
+@create_enum_option(
+    arg_flag="--backend",
+    help_message="Sets which vectorization backend is used.",
+    default=VectorBackend.vit,
+    input_enum=VectorBackend,
+)
 @click.option(
     "--vectors-path",
     "-v",
@@ -87,6 +110,7 @@ def main(  # pylint: disable=too-many-locals
     duration: float,
     output_fps: float,
     batch_size: int,
+    backend: VectorBackend,
     vectors_path: Optional[Path],
     viz_path: Optional[Path],
 ) -> None:
@@ -101,10 +125,16 @@ def main(  # pylint: disable=too-many-locals
     :param duration: See click docs.
     :param output_fps: See click docs.
     :param batch_size: See click docs.
+    :param backend: See click docs.
     :param vectors_path: See click docs.
     :param viz_path: See click docs.
     :return: None
     """
+
+    lookup = {
+        VectorBackend.vit: CONVERT_VIT_CLS,
+        VectorBackend.clip: CONVERT_CLIP,
+    }
 
     create_timelapse(
         input_files=input_files,
@@ -112,6 +142,7 @@ def main(  # pylint: disable=too-many-locals
         duration=duration,
         output_fps=output_fps,
         batch_size=batch_size,
+        conversion_scoring_functions=lookup[backend],
         vectors_path=vectors_path,
         plot_path=viz_path,
     )
