@@ -7,7 +7,7 @@ Create timelapses from video that change speed based on the content found in the
 With the virtual env activated, run: 
 
 ```
-python catcli.py \
+python catcli.py content \
 --input "/home/devon/Desktop/Overhead Camera/pwm_driver_module/pwm_drive_module_v1.2.0_1.mp4" \
 --input "/home/devon/Desktop/Overhead Camera/pwm_driver_module/pwm_drive_module_v1.2.0_2.mp4" \
 --input "/home/devon/Desktop/Overhead Camera/pwm_driver_module/pwm_drive_module_v1.2.0_3.mp4" \

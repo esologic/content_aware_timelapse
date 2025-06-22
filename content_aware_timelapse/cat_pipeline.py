@@ -33,6 +33,41 @@ class _FramesCount(NamedTuple):
     frames: ImageSourceType
 
 
+def calculate_output_frames(duration: float, output_fps: float) -> int:
+    """
+    Canonical function to do this math.
+    :param duration: Desired length of the video in seconds.
+    :param output_fps: FPS of output.
+    :return: Round number for output frames.
+    """
+
+    return int(duration * output_fps)
+
+
+def load_input_videos(input_files: List[Path]) -> _FramesCount:
+    """
+    Helper function to combine the input videos.
+    :param input_files: List of input videos.
+    :return: NT containing the total frame count and a joined iterator of all the input
+    frames.
+    """
+
+    input_video_frames: List[VideoFrames] = list(
+        map(video_common.frames_in_video_opencv, input_files)
+    )
+
+    all_input_frames = itertools.chain.from_iterable(
+        [video_frames.frames for video_frames in input_video_frames]
+    )
+
+    return _FramesCount(
+        total_frame_count=sum(
+            (video_frames.total_frame_count for video_frames in input_video_frames)
+        ),
+        frames=all_input_frames,
+    )
+
+
 def create_timelapse(  # pylint: disable=too-many-locals
     input_files: List[Path],
     output_path: Path,
@@ -65,29 +100,7 @@ def create_timelapse(  # pylint: disable=too-many-locals
 
     input_signature = create_videos_signature(video_paths=input_files)
 
-    def load_input_videos() -> _FramesCount:
-        """
-        Helper function to combine the input videos.
-        :return: NT containing the total frame count and a joined iterator of all the input
-        frames.
-        """
-
-        input_video_frames: List[VideoFrames] = list(
-            map(video_common.frames_in_video_opencv, input_files)
-        )
-
-        all_input_frames = itertools.chain.from_iterable(
-            [video_frames.frames for video_frames in input_video_frames]
-        )
-
-        return _FramesCount(
-            total_frame_count=sum(
-                (video_frames.total_frame_count for video_frames in input_video_frames)
-            ),
-            frames=all_input_frames,
-        )
-
-    frames_count = load_input_videos()
+    frames_count = load_input_videos(input_files=input_files)
 
     LOGGER.info(f"Total frames to process: {frames_count.total_frame_count}.")
 
@@ -122,7 +135,7 @@ def create_timelapse(  # pylint: disable=too-many-locals
     most_interesting_indices: Set[int] = set(
         vector_scoring.select_frames(
             index_scores=score_indexes,
-            num_output_frames=int(duration * output_fps),
+            num_output_frames=calculate_output_frames(duration=duration, output_fps=output_fps),
             plot_path=plot_path,
         )
     )
@@ -132,7 +145,7 @@ def create_timelapse(  # pylint: disable=too-many-locals
     # Slice the frames to include the frame at final_frame_index
     # Ensure the frame at final_frame_index is included, the plus one.
     sliced_frames: ImageSourceType = itertools.islice(
-        load_input_videos().frames, None, final_frame_index + 1
+        load_input_videos(input_files=input_files).frames, None, final_frame_index + 1
     )
 
     most_interesting_frames: ImageSourceType = (

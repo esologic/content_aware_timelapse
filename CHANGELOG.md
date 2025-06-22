@@ -1,5 +1,11 @@
 # Changelog
 
+0.5.0 - (2025-06-22)
+------------------
+
+* Broke CLI into multiple commands: `content` for content aware and `classic` for down-sampling.
+* Implemented the down-sampling mode. 
+
 0.4.0 - (2025-06-21)
 ------------------
 
@@ -9,6 +15,7 @@
 * Implemented first pass at a radius deselection method to avoid clusters in the output videos.
 * Added unit tests that actually verify interesting frames are selected over boring ones.
 * Added sensible weights for the different vector score results.
+
 
 0.3.0 - (2025-04-02)
 ------------------

@@ -1,13 +1,15 @@
 """Main module."""
 
+import itertools
 import logging
 from enum import Enum
 from pathlib import Path
 from typing import List, Optional
 
 import click
+from tqdm import tqdm
 
-from content_aware_timelapse.cat_pipeline import create_timelapse
+from content_aware_timelapse import cat_pipeline
 from content_aware_timelapse.cli_common import create_enum_option
 from content_aware_timelapse.frames_to_vectors.vector_computation.compute_vectors_clip import (
     CONVERT_CLIP,
@@ -15,6 +17,7 @@ from content_aware_timelapse.frames_to_vectors.vector_computation.compute_vector
 from content_aware_timelapse.frames_to_vectors.vector_computation.compute_vectors_vit import (
     CONVERT_VIT_CLS,
 )
+from content_aware_timelapse.viderator import video_common
 
 LOGGER_FORMAT = "[%(asctime)s - %(process)s - %(name)20s - %(levelname)s] %(message)s"
 LOGGER_DATE_FORMAT = "%Y-%m-%d %H:%M:%S"
@@ -37,8 +40,7 @@ class VectorBackend(str, Enum):
     clip = "clip"
 
 
-@click.command()
-@click.option(
+input_files_arg = click.option(
     "--input",
     "-i",
     "input_files",
@@ -47,14 +49,16 @@ class VectorBackend(str, Enum):
     required=True,
     multiple=True,
 )
-@click.option(
+
+output_path_arg = click.option(
     "--output-path",
     "-o",
     type=click.Path(exists=False, file_okay=True, dir_okay=False, writable=True, path_type=Path),
     help="Output will be written to this file.",
     required=True,
 )
-@click.option(
+
+duration_arg = click.option(
     "--duration",
     "-d",
     type=click.FloatRange(min=1),
@@ -63,7 +67,8 @@ class VectorBackend(str, Enum):
     default=30.0,
     show_default=True,
 )
-@click.option(
+
+output_fps_arg = click.option(
     "--output-fps",
     "-f",
     type=click.FloatRange(min=1),
@@ -72,6 +77,24 @@ class VectorBackend(str, Enum):
     default=60.0,
     show_default=True,
 )
+
+
+@click.group()
+def cli() -> None:
+    """
+    Tools to create timelapses.
+
+    \f
+
+    :return: None
+    """
+
+
+@cli.command(short_help="Looks at the content of the frames to choose the most interesting ones.")
+@input_files_arg
+@output_path_arg
+@duration_arg
+@output_fps_arg
 @click.option(
     "--batch-size",
     "-b",
@@ -104,7 +127,7 @@ class VectorBackend(str, Enum):
     ),
     required=False,
 )
-def main(  # pylint: disable=too-many-locals
+def content(  # pylint: disable=too-many-locals
     input_files: List[Path],
     output_path: Path,
     duration: float,
@@ -136,7 +159,7 @@ def main(  # pylint: disable=too-many-locals
         VectorBackend.clip: CONVERT_CLIP,
     }
 
-    create_timelapse(
+    cat_pipeline.create_timelapse(
         input_files=input_files,
         output_path=output_path,
         duration=duration,
@@ -148,5 +171,60 @@ def main(  # pylint: disable=too-many-locals
     )
 
 
+@cli.command(
+    short_help=(
+        "Evenly down-selects the input, taking every N frames until the "
+        "desired output length is reached."
+    )
+)
+@input_files_arg
+@output_path_arg
+@duration_arg
+@output_fps_arg
+def classic(  # pylint: disable=too-many-locals
+    input_files: List[Path],
+    output_path: Path,
+    duration: float,
+    output_fps: float,
+) -> None:
+    """
+    Evenly down-selects the input, taking every N frames until the desired output length is reached.
+    This is the classic timelapse method.
+
+    \f
+
+    :param input_files: See click docs.
+    :param output_path: See click docs.
+    :param duration: See click docs.
+    :param output_fps: See click docs.
+    :return: None
+    """
+
+    source_frames = cat_pipeline.load_input_videos(input_files=input_files)
+
+    take_every = int(
+        source_frames.total_frame_count
+        / cat_pipeline.calculate_output_frames(duration=duration, output_fps=output_fps)
+    )
+
+    video_common.write_source_to_disk_consume(
+        source=itertools.islice(
+            tqdm(
+                source_frames.frames,
+                total=source_frames.total_frame_count,
+                unit="Frames",
+                ncols=100,
+                desc="Scoring Images",
+            ),
+            None,
+            None,
+            take_every,
+        ),
+        video_path=output_path,
+        video_fps=output_fps,
+        high_quality=True,
+    )
+
+
 if __name__ == "__main__":
-    main()  # pylint: disable=no-value-for-parameter
+    cli()  # pylint: disable=no-value-for-parameter
