@@ -3,7 +3,7 @@ Turn vectorized images to numerical scores, then pick the best images for the ou
 """
 
 from pathlib import Path
-from typing import List, Optional, TypedDict
+from typing import List, Optional, Tuple, TypedDict
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -22,6 +22,7 @@ class IndexScores(TypedDict):
     variance: float
     saliency: float
     energy: float
+    top_pixels: List[Tuple[int, int]]
 
 
 def _apply_radius_deselection(

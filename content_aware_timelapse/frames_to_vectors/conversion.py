@@ -13,7 +13,7 @@ from numpy import typing as npt
 
 from content_aware_timelapse import vector_file
 from content_aware_timelapse.frames_to_vectors.conversion_types import ConvertBatchesFunction
-from content_aware_timelapse.viderator.image_common import ImageSourceType
+from content_aware_timelapse.viderator.viderator_types import ImageSourceType
 
 LOGGER = logging.getLogger(__name__)
 

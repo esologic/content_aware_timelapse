@@ -20,7 +20,7 @@ from content_aware_timelapse.frames_to_vectors.vector_computation.compute_vector
 )
 from content_aware_timelapse.frames_to_vectors.vector_scoring import IndexScores
 from content_aware_timelapse.viderator import image_common
-from content_aware_timelapse.viderator.image_common import ImageSourceType
+from content_aware_timelapse.viderator.viderator_types import ImageSourceType
 
 
 @pytest.mark.parametrize(

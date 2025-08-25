@@ -18,13 +18,13 @@ import numpy as np
 from ffmpeg.nodes import FilterableStream
 from vidgear.gears import WriteGear
 
-from content_aware_timelapse.viderator.image_common import (
+from content_aware_timelapse.viderator.image_common import image_resolution
+from content_aware_timelapse.viderator.iterator_common import first_item_from_iterator
+from content_aware_timelapse.viderator.viderator_types import (
     ImageResolution,
     ImageSourceType,
     RGBInt8ImageType,
-    image_resolution,
 )
-from content_aware_timelapse.viderator.iterator_common import first_item_from_iterator
 
 _DEFAULT_WINDOW_NAME = "Frames"
 

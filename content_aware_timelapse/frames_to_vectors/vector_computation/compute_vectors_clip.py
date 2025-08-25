@@ -15,7 +15,7 @@ from PIL import Image
 
 from content_aware_timelapse.frames_to_vectors.conversion_types import ConversionScoringFunctions
 from content_aware_timelapse.frames_to_vectors.vector_scoring import IndexScores
-from content_aware_timelapse.viderator.image_common import RGBInt8ImageType
+from content_aware_timelapse.viderator.viderator_types import RGBInt8ImageType
 
 LOGGER = logging.getLogger(__name__)
 
@@ -133,6 +133,7 @@ def _calculate_scores_clip(packed: Tuple[int, npt.NDArray[np.float16]]) -> Index
         variance=float(np.var(embedding)),
         saliency=float(np.max(embedding)),
         energy=float(np.linalg.norm(embedding)),
+        top_pixels=[],
     )
 
 

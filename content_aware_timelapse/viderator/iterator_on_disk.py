@@ -18,7 +18,7 @@ import more_itertools
 import numpy as np
 from sentinels import NOTHING
 
-from content_aware_timelapse.viderator.image_common import RGBInt8ImageType
+from content_aware_timelapse.viderator.viderator_types import RGBInt8ImageType
 
 T = TypeVar("T")
 

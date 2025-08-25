@@ -11,7 +11,8 @@ import pytest
 
 from content_aware_timelapse import timeout_common
 from content_aware_timelapse.viderator import video_common
-from content_aware_timelapse.viderator.image_common import ImageResolution, image_resolution
+from content_aware_timelapse.viderator.image_common import image_resolution
+from content_aware_timelapse.viderator.viderator_types import ImageResolution
 
 
 @pytest.mark.parametrize("video_path", [SAMPLE_TIMELAPSE_INPUT_PATH, LONG_TEST_VIDEO_PATH])

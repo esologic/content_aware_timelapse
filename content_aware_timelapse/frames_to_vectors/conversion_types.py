@@ -8,7 +8,7 @@ import numpy as np
 import numpy.typing as npt
 
 from content_aware_timelapse.frames_to_vectors.vector_scoring import IndexScores
-from content_aware_timelapse.viderator.video_common import RGBInt8ImageType
+from content_aware_timelapse.viderator.viderator_types import RGBInt8ImageType
 
 
 class ConvertBatchesFunction(Protocol):

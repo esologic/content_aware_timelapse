@@ -18,8 +18,8 @@ from content_aware_timelapse.frames_to_vectors.conversion_types import Conversio
 from content_aware_timelapse.frames_to_vectors.vector_scoring import IndexScores
 from content_aware_timelapse.vector_file import create_videos_signature
 from content_aware_timelapse.viderator import iterator_common, video_common
-from content_aware_timelapse.viderator.image_common import ImageSourceType
 from content_aware_timelapse.viderator.video_common import VideoFrames
+from content_aware_timelapse.viderator.viderator_types import ImageSourceType
 
 LOGGER = logging.getLogger(__name__)
 

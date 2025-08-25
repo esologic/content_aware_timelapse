@@ -6,7 +6,7 @@ from typing import cast
 
 import numpy as np
 
-from content_aware_timelapse.viderator.video_common import (
+from content_aware_timelapse.viderator.viderator_types import (
     ImageResolution,
     ImageSourceType,
     RGBInt8ImageType,
