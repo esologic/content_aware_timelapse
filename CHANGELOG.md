@@ -1,5 +1,12 @@
 # Changelog
 
+0.6.0 - (2025-08-25)
+------------------
+
+* Fixed a long-standing bug where images were cropped to 224x224 instead of scaled and padded.
+* Implemented a VIT attention map processing/scoring backend.
+
+
 0.5.0 - (2025-06-22)
 ------------------
 
