@@ -2,13 +2,25 @@
 Types needed to describe the frames to vectors conversions.
 """
 
-from typing import Iterator, List, NamedTuple, Protocol, Tuple
+from typing import Iterator, List, NamedTuple, Protocol, Tuple, TypedDict
 
 import numpy as np
 import numpy.typing as npt
 
-from content_aware_timelapse.frames_to_vectors.vector_scoring import IndexScores
 from content_aware_timelapse.viderator.viderator_types import RGBInt8ImageType
+
+
+class IndexScores(TypedDict):
+    """
+    Intermediate type for linking the Euclidean distance between the next frame and the index
+    of the frame.
+    """
+
+    frame_index: int
+    entropy: float
+    variance: float
+    saliency: float
+    energy: float
 
 
 class ConvertBatchesFunction(Protocol):
@@ -39,6 +51,18 @@ class ScoreVectorsFunction(Protocol):
         """
 
 
+class ScoreWeights(NamedTuple):
+    """
+    Each of these values is a float between 0 and 1, and it is a multipler on the given column
+    post normalization.
+    """
+
+    low_entropy: float
+    variance: float
+    saliency: float
+    energy: float
+
+
 class ConversionScoringFunctions(NamedTuple):
     """
     Links a conversion function (which goes from images -> vectors) to a scoring function which
@@ -48,3 +72,4 @@ class ConversionScoringFunctions(NamedTuple):
 
     conversion: ConvertBatchesFunction
     scoring: ScoreVectorsFunction
+    weights: ScoreWeights

@@ -15,6 +15,7 @@ from content_aware_timelapse.frames_to_vectors.vector_computation.compute_vector
     CONVERT_CLIP,
 )
 from content_aware_timelapse.frames_to_vectors.vector_computation.compute_vectors_vit import (
+    CONVERT_VIT_ATTENTION,
     CONVERT_VIT_CLS,
 )
 from content_aware_timelapse.viderator import video_common
@@ -36,7 +37,8 @@ class VectorBackend(str, Enum):
     For the CLI, string representations of the different vectorization backends.
     """
 
-    vit = "vit"
+    vit_cls = "vit-cls"
+    vit_attention = "vit-attention"
     clip = "clip"
 
 
@@ -107,7 +109,7 @@ def cli() -> None:
 @create_enum_option(
     arg_flag="--backend",
     help_message="Sets which vectorization backend is used.",
-    default=VectorBackend.vit,
+    default=VectorBackend.vit_cls,
     input_enum=VectorBackend,
 )
 @click.option(
@@ -155,7 +157,8 @@ def content(  # pylint: disable=too-many-locals
     """
 
     lookup = {
-        VectorBackend.vit: CONVERT_VIT_CLS,
+        VectorBackend.vit_cls: CONVERT_VIT_CLS,
+        VectorBackend.vit_attention: CONVERT_VIT_ATTENTION,
         VectorBackend.clip: CONVERT_CLIP,
     }
 

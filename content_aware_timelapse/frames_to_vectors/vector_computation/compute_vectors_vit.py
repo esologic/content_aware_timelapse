@@ -4,7 +4,9 @@ Defines the forward features method of going from frames to vectors.
 
 import logging
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from typing import Callable, Iterator, List, Tuple, cast
+from enum import Enum
+from functools import partial
+from typing import Callable, Iterator, List, NamedTuple, Tuple, cast
 
 import more_itertools
 import numpy as np
@@ -17,8 +19,11 @@ from torch import Tensor
 from torch.nn.modules.dropout import Dropout
 from torchvision import transforms
 
-from content_aware_timelapse.frames_to_vectors.conversion_types import ConversionScoringFunctions
-from content_aware_timelapse.frames_to_vectors.vector_scoring import IndexScores
+from content_aware_timelapse.frames_to_vectors.conversion_types import (
+    ConversionScoringFunctions,
+    IndexScores,
+    ScoreWeights,
+)
 from content_aware_timelapse.viderator.viderator_types import PILImage, RGBInt8ImageType
 
 LOGGER = logging.getLogger(__name__)
@@ -72,11 +77,31 @@ VIT_IMAGE_TRANSFORM = transforms.Compose(
 )
 
 
-def _compute_vectors_vit_cls(
+class VITOutputMode(int, Enum):
+    """
+    Different possible VIT output nodes.
+    """
+
+    CLS_TOKEN = 0
+    ATTENTION_MAP = 1
+
+
+class _VITBatchOutput(NamedTuple):
+    """
+    Output from the GPU.
+    """
+
+    output_features: Tensor
+    attention_maps: List[Tensor]
+
+
+def _compute_vectors_vit(
+    output_mode: VITOutputMode,
     frame_batches: Iterator[List[RGBInt8ImageType]],
 ) -> Iterator[npt.NDArray[np.float16]]:
     """
     Computes new vectors from the input frames. Uses GPU acceleration if available.
+    :param output_mode: Desired output mode, controls the format of the ouput vectors.
     :param frame_batches: Iterator of lists of frames to compute vectors. Frames are processed
     in batches, but output will be one vector per frame.
     :return: Iterator of vectors, one per input frame.
@@ -129,7 +154,7 @@ def _compute_vectors_vit_cls(
 
     def process_images_for_model(
         image_batch: List[RGBInt8ImageType], model: torch.nn.Module
-    ) -> List[torch.Tensor]:
+    ) -> _VITBatchOutput:
         """
         Preprocesses a batch of images and extracts feature vectors AND attention weights.
 
@@ -158,8 +183,10 @@ def _compute_vectors_vit_cls(
         # Disable gradient calculation and pass the batch through the model
         with torch.no_grad():
             LOGGER.debug(f"Sending images to {device}...")
-            _output: torch.Tensor = model.forward_features(tensor_image_batch)
-            return cast(List[Tensor], model.attention_weights_container)
+            return _VITBatchOutput(
+                output_features=model.forward_features(tensor_image_batch),
+                attention_maps=cast(List[Tensor], model.attention_weights_container),
+            )
 
     def images_to_feature_vectors(
         image_batches: List[List[RGBInt8ImageType]], executor: ThreadPoolExecutor
@@ -182,13 +209,21 @@ def _compute_vectors_vit_cls(
         ]
 
         # Collect results as they are completed
-        for _index, future in enumerate(as_completed(futures)):
-            list_of_attention_tensors = future.result()
-            # Convert to (batch, layers, heads, seq_len, seq_len)
-            per_frame = torch.stack(list_of_attention_tensors, dim=1)
+        for future in as_completed(futures):
+            vit_batch_output: _VITBatchOutput = future.result()
 
-            for frame_attention in per_frame:
-                yield frame_attention.cpu().numpy().astype(np.float16)
+            if output_mode == VITOutputMode.ATTENTION_MAP:
+
+                # Convert to (batch, layers, heads, seq_len, seq_len)
+                per_frame = torch.stack(vit_batch_output.attention_maps, dim=1)
+
+                for frame_attention in per_frame:
+                    yield frame_attention.cpu().numpy().astype(np.float16)
+            elif output_mode == VITOutputMode.CLS_TOKEN:
+                cls_embeddings_batch = vit_batch_output.output_features[:, 0, :].cpu().numpy()
+                yield from cls_embeddings_batch
+            else:
+                raise ValueError(f"Unknown output mode: {output_mode}")
 
     # Create a single thread pool for all image batches
     with ThreadPoolExecutor(max_workers=len(models)) as e:
@@ -199,29 +234,117 @@ def _compute_vectors_vit_cls(
 
 def _calculate_scores_vit_cls(packed: Tuple[int, npt.NDArray[np.float16]]) -> IndexScores:
     """
-    Calculate scores from the CLS token embedding of an image and identify top pixels
-    using attention-based patch saliency scores.
+    Calculate scores from the CLS token embedding of an image.
 
-    :param packed: Tuple of (image_index, (full_vit_output, attention_saliency_scores_for_patches)).
-                   full_vit_output: (197, 768) array (CLS + patches)
-                   attention_saliency_scores_for_patches: (196,) array (saliency for each patch)
-    :return: Calculated scores and index, including top pixel coordinates.
+    Metrics are reinterpreted for feature vectors:
+        - Energy: Measures the L2 norm (magnitude) of the feature vector, indicating overall
+                  feature activation strength.
+        - Saliency: Measures the maximum activation value within the vector, pointing to the
+                    strongest single feature.
+        - Variance: Measures the spread of values in the vector, indicating diversity or
+                    concentration of feature activations.
+        - Entropy: Measures the distribution of (normalized positive) feature activations.
+                   Its interpretation for 'interestingness' is less direct for feature vectors
+                   compared to spatial attention maps, but can indicate feature sparsity/density.
+
+    :param packed: Tuple of the image's index and its CLS token embedding.
+    :return: Calculated scores and index.
     """
 
-    index, _stacked_attention_map = packed
+    index, cls_embedding = packed
+    cls_embedding = cls_embedding.astype(np.float32)  # Ensure float32 for calculations
 
-    # TODO: Need to read the attention map and get the desired properties.
+    # --- Re-interpreting Metrics for a CLS Feature Vector (768 dimensions) ---
+
+    # Energy: L2 Norm of the CLS embedding. A higher norm generally means a stronger,
+    # more confident, or more distinct feature representation.
+    energy_score = np.linalg.norm(cls_embedding)
+
+    # Indicates the strongest single feature component the model picked up.
+    saliency_score = np.percentile(cls_embedding, 90)
+
+    # Variance: Variance of the values in the CLS embedding.
+    # High variance suggests some feature dimensions are highly active while others are not.
+    # Low variance suggests more uniform feature activations.
+    variance_score = np.var(cls_embedding)
+
+    # Entropy: Entropy of the distribution of (normalized positive) feature values.
+    # If the embedding has negative values, consider taking abs or handling carefully.
+    # Here, we normalize only positive values to make it behave like a probability distribution.
+    positive_values = cls_embedding[cls_embedding > 0]
+    if positive_values.size > 0:
+        # Normalize positive values to sum to 1 to form a probability distribution
+        normalized_positive_values = positive_values / (np.sum(positive_values) + 1e-8)
+        entropy_score = -np.sum(
+            normalized_positive_values * np.log(normalized_positive_values + 1e-8)
+        )
+    else:
+        # If no positive values, entropy is conventionally 0 (or adjust as needed)
+        entropy_score = 0.0
 
     return IndexScores(
         frame_index=index,
-        entropy=1,
-        variance=1,
-        saliency=1,  # This is CLS embedding saliency
-        energy=1,
-        top_pixels=[],
+        entropy=entropy_score,
+        variance=float(variance_score),
+        saliency=float(saliency_score),
+        energy=float(energy_score),
+    )
+
+
+def _calculate_scores_vit_attention(packed: Tuple[int, npt.NDArray[np.float16]]) -> IndexScores:
+    """
+    Calculate scores from the attention map(s) of an image.
+
+    Metrics are reinterpreted for attention maps:
+        - Energy: Frobenius norm of the attention maps, indicating overall strength.
+        - Saliency: 90th percentile of attention weights, highlighting strongest focus.
+        - Variance: Spread of attention values; high = sparse focus, low = diffuse.
+        - Entropy: Normalized entropy of attention distribution;
+                   low = focused, high = diffuse.
+
+    :param packed: Tuple of (frame_index, attention_map).
+                   attention_map may be (layers, heads, seq_len, seq_len)
+                   or already reduced. All dims are flattened here.
+    :return: IndexScores with scalar metrics for the frame.
+    """
+    index, attention_map = packed
+
+    # Flatten across all dimensions
+    map_as_float = attention_map.astype(np.float32).ravel()
+
+    # Energy: Frobenius norm (total activation strength)
+    energy_score = np.linalg.norm(map_as_float)
+
+    # Saliency: 90th percentile (strongest attention weight)
+    saliency_score = np.percentile(map_as_float, 90)
+
+    # Variance: spread of attention values
+    variance_score = np.var(map_as_float)
+
+    # Entropy: treat as probability distribution
+    if map_as_float.size > 0:
+        probs = map_as_float / (np.sum(map_as_float) + 1e-8)
+        entropy_score = -np.sum(probs * np.log(probs + 1e-8))
+    else:
+        entropy_score = 0.0
+
+    return IndexScores(
+        frame_index=index,
+        entropy=float(entropy_score),
+        variance=float(variance_score),
+        saliency=float(saliency_score),
+        energy=float(energy_score),
     )
 
 
 CONVERT_VIT_CLS = ConversionScoringFunctions(
-    conversion=_compute_vectors_vit_cls, scoring=_calculate_scores_vit_cls
+    conversion=partial(_compute_vectors_vit, VITOutputMode.CLS_TOKEN),
+    scoring=_calculate_scores_vit_cls,
+    weights=ScoreWeights(low_entropy=0.5, variance=0.2, saliency=0.5, energy=0.7),
+)
+
+CONVERT_VIT_ATTENTION = ConversionScoringFunctions(
+    conversion=partial(_compute_vectors_vit, VITOutputMode.ATTENTION_MAP),
+    scoring=_calculate_scores_vit_attention,
+    weights=ScoreWeights(low_entropy=0.4, variance=0.1, saliency=0.4, energy=0.2),
 )

@@ -38,7 +38,7 @@ SORTED_STREAM_SOFTWARE_PATHS: List[Path] = [
 SORTED_STREAM_GENERIC_PATHS: List[Path] = [
     _ASSETS_DIRECTORY / "stream_software_obscured_1.png",
     _ASSETS_DIRECTORY / "bench_scene_out_of_focus.png",
-    _ASSETS_DIRECTORY / "bench_scene_in_focus.png",
     _ASSETS_DIRECTORY / "stream_software.png",
     _ASSETS_DIRECTORY / "stream_cad_1.png",
+    _ASSETS_DIRECTORY / "bench_scene_in_focus.png",
 ]

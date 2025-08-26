@@ -14,13 +14,13 @@ from content_aware_timelapse.frames_to_vectors.vector_computation.compute_vector
     _compute_vectors_clip,
 )
 from content_aware_timelapse.frames_to_vectors.vector_computation.compute_vectors_vit import (
-    _compute_vectors_vit_cls,
+    CONVERT_VIT_CLS,
 )
 from content_aware_timelapse.viderator.viderator_types import ImageResolution
 
 
 @pytest.mark.parametrize(
-    "convert_batches_function", [_compute_vectors_vit_cls, _compute_vectors_clip]
+    "convert_batches_function", [CONVERT_VIT_CLS.scoring, _compute_vectors_clip]
 )
 def test_frames_to_vectors_pipeline(convert_batches_function: ConvertBatchesFunction) -> None:
     """

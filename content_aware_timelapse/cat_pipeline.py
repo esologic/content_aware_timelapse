@@ -14,8 +14,10 @@ from tqdm import tqdm
 import content_aware_timelapse.frames_to_vectors.conversion
 import content_aware_timelapse.frames_to_vectors.vector_computation.compute_vectors_vit
 from content_aware_timelapse.frames_to_vectors import vector_scoring
-from content_aware_timelapse.frames_to_vectors.conversion_types import ConversionScoringFunctions
-from content_aware_timelapse.frames_to_vectors.vector_scoring import IndexScores
+from content_aware_timelapse.frames_to_vectors.conversion_types import (
+    ConversionScoringFunctions,
+    IndexScores,
+)
 from content_aware_timelapse.vector_file import create_videos_signature
 from content_aware_timelapse.viderator import iterator_common, video_common
 from content_aware_timelapse.viderator.video_common import VideoFrames
@@ -134,6 +136,7 @@ def create_timelapse(  # pylint: disable=too-many-locals
 
     most_interesting_indices: Set[int] = set(
         vector_scoring.select_frames(
+            score_weights=conversion_scoring_functions.weights,
             index_scores=score_indexes,
             num_output_frames=calculate_output_frames(duration=duration, output_fps=output_fps),
             plot_path=plot_path,

@@ -14,11 +14,14 @@ import pytest
 import content_aware_timelapse.frames_to_vectors.conversion
 import content_aware_timelapse.frames_to_vectors.vector_computation.compute_vectors_vit
 from content_aware_timelapse.frames_to_vectors import vector_scoring
-from content_aware_timelapse.frames_to_vectors.conversion_types import ConversionScoringFunctions
+from content_aware_timelapse.frames_to_vectors.conversion_types import (
+    ConversionScoringFunctions,
+    IndexScores,
+)
 from content_aware_timelapse.frames_to_vectors.vector_computation.compute_vectors_vit import (
+    CONVERT_VIT_ATTENTION,
     CONVERT_VIT_CLS,
 )
-from content_aware_timelapse.frames_to_vectors.vector_scoring import IndexScores
 from content_aware_timelapse.viderator import image_common
 from content_aware_timelapse.viderator.viderator_types import ImageSourceType
 
@@ -27,7 +30,8 @@ from content_aware_timelapse.viderator.viderator_types import ImageSourceType
     "conversion_scoring_functions",
     [
         # CONVERT_CLIP, # CLIP doesn't totally work as expected yet...
-        CONVERT_VIT_CLS
+        CONVERT_VIT_CLS,
+        CONVERT_VIT_ATTENTION,
     ],
 )
 @pytest.mark.parametrize(
@@ -65,9 +69,10 @@ def test_sorting_converted_vectors(
     )
 
     indices = vector_scoring._score_and_sort_frames(  # pylint: disable=protected-access
+        score_weights=conversion_scoring_functions.weights,
         index_scores=score_indexes,
         num_output_frames=len(score_indexes) - 2,
         plot_path=None,
     )
 
-    assert list(sorted(indices, reverse=True)) == indices
+    assert indices == list(sorted(indices, reverse=True))

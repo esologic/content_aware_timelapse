@@ -3,26 +3,14 @@ Turn vectorized images to numerical scores, then pick the best images for the ou
 """
 
 from pathlib import Path
-from typing import List, Optional, Tuple, TypedDict
+from typing import List, Optional
 
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 from sklearn import preprocessing
 
-
-class IndexScores(TypedDict):
-    """
-    Intermediate type for linking the Euclidean distance between the next frame and the index
-    of the frame.
-    """
-
-    frame_index: int
-    entropy: float
-    variance: float
-    saliency: float
-    energy: float
-    top_pixels: List[Tuple[int, int]]
+from content_aware_timelapse.frames_to_vectors.conversion_types import IndexScores, ScoreWeights
 
 
 def _apply_radius_deselection(
@@ -85,11 +73,16 @@ def _apply_radius_deselection(
 
 
 def _score_and_sort_frames(
-    index_scores: List[IndexScores], num_output_frames: int, plot_path: Optional[Path]
+    score_weights: ScoreWeights,
+    index_scores: List[IndexScores],
+    num_output_frames: int,
+    plot_path: Optional[Path],
 ) -> List[int]:
     """
     Selects the top `num_output_frames` while avoiding clusters.
 
+    :param score_weights: Weights applied to the different properties after they are normalized from
+    0-1. The overall score is the sum of the weighted properties.
     :param index_scores: List of dictionaries containing frame index and feature scores.
     :param num_output_frames: Number of frames to select.
     :param plot_path: If given, creates an overall visualization of the math that went into
@@ -105,10 +98,10 @@ def _score_and_sort_frames(
         """
 
         return (
-            (index_score["entropy"] * 0.25)
-            + (index_score["variance"] * 0.3)
-            + (index_score["saliency"] * 0.2)
-            + (index_score["energy"] * 0.1)
+            (index_score["entropy"] * score_weights.low_entropy)
+            + (index_score["variance"] * score_weights.variance)
+            + (index_score["saliency"] * score_weights.saliency)
+            + (index_score["energy"] * score_weights.energy)
         )
 
     raw_df = pd.DataFrame.from_records(index_scores).set_index("frame_index")
@@ -118,6 +111,9 @@ def _score_and_sort_frames(
     scaled_df = pd.DataFrame(
         scaler.fit_transform(raw_df), columns=raw_df.columns, index=raw_df.index
     )
+
+    scaled_df["entropy"] = 1.0 - scaled_df["entropy"]  # lower entropy = better
+
     scaled_df["overall_score"] = scaled_df.apply(_basic_score, axis=1)
 
     winning_indices = _apply_radius_deselection(
@@ -155,11 +151,16 @@ def _score_and_sort_frames(
 
 
 def select_frames(
-    index_scores: List[IndexScores], num_output_frames: int, plot_path: Optional[Path] = None
+    score_weights: ScoreWeights,
+    index_scores: List[IndexScores],
+    num_output_frames: int,
+    plot_path: Optional[Path] = None,
 ) -> List[int]:
     """
     Selects the top `num_output_frames` while avoiding clusters.
 
+    :param score_weights: Weights applied to the different properties after they are normalized from
+    0-1. The overall score is the sum of the weighted properties.
     :param index_scores: List of dictionaries containing frame index and feature scores.
     :param num_output_frames: Number of frames to select.
     :param plot_path: If given, a visualization representing why each frame was chosen will be
@@ -169,6 +170,7 @@ def select_frames(
 
     return sorted(
         _score_and_sort_frames(
+            score_weights=score_weights,
             index_scores=index_scores,
             num_output_frames=num_output_frames,
             plot_path=plot_path,
