@@ -20,7 +20,7 @@ from content_aware_timelapse.viderator.viderator_types import ImageResolution
 
 
 @pytest.mark.parametrize(
-    "convert_batches_function", [CONVERT_VIT_CLS.scoring, _compute_vectors_clip]
+    "convert_batches_function", [CONVERT_VIT_CLS.conversion, _compute_vectors_clip]
 )
 def test_frames_to_vectors_pipeline(convert_batches_function: ConvertBatchesFunction) -> None:
     """
