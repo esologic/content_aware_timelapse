@@ -109,3 +109,5 @@ ENV/
 
 *.mp4
 *.mkv
+
+prod_db_files

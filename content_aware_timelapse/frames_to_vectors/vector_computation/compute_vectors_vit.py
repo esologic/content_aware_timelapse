@@ -183,9 +183,12 @@ def _compute_vectors_vit_cls(
 
         # Collect results as they are completed
         for _index, future in enumerate(as_completed(futures)):
-            # TODO: This is a batch! We need to break it back up by frame.
             list_of_attention_tensors = future.result()
-            yield torch.stack(list_of_attention_tensors).cpu().numpy()
+            # Convert to (batch, layers, heads, seq_len, seq_len)
+            per_frame = torch.stack(list_of_attention_tensors, dim=1)
+
+            for frame_attention in per_frame:
+                yield frame_attention.cpu().numpy().astype(np.float16)
 
     # Create a single thread pool for all image batches
     with ThreadPoolExecutor(max_workers=len(models)) as e:
