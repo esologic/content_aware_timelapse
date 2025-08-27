@@ -70,6 +70,7 @@ class ConversionScoringFunctions(NamedTuple):
     the images to scores pipeline.
     """
 
+    name: str
     conversion: ConvertBatchesFunction
     scoring: ScoreVectorsFunction
     weights: ScoreWeights

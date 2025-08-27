@@ -140,6 +140,7 @@ def _calculate_scores_clip(packed: Tuple[int, npt.NDArray[np.float16]]) -> Index
 
 
 CONVERT_CLIP = ConversionScoringFunctions(
+    name="clip",
     conversion=_compute_vectors_clip,
     scoring=_calculate_scores_clip,
     weights=ScoreWeights(low_entropy=1, variance=1, saliency=1, energy=1),

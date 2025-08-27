@@ -92,7 +92,7 @@ class _VITBatchOutput(NamedTuple):
     """
 
     output_features: Tensor
-    attention_maps: List[Tensor]
+    attention_maps: Tensor
 
 
 def _compute_vectors_vit(
@@ -183,10 +183,19 @@ def _compute_vectors_vit(
         # Disable gradient calculation and pass the batch through the model
         with torch.no_grad():
             LOGGER.debug(f"Sending images to {device}...")
-            return _VITBatchOutput(
+
+            output = _VITBatchOutput(
                 output_features=model.forward_features(tensor_image_batch),
-                attention_maps=cast(List[Tensor], model.attention_weights_container),
+                attention_maps=torch.stack(model.attention_weights_container, dim=1),
             )
+
+            LOGGER.debug(
+                f"Got back result. Features Shape: {output.output_features.shape}, "
+                f"Attention Maps Length: {len(output.attention_maps)}, "
+                f"Shape: {output.attention_maps[0].shape}"
+            )
+
+            return output
 
     def images_to_feature_vectors(
         image_batches: List[List[RGBInt8ImageType]], executor: ThreadPoolExecutor
@@ -213,17 +222,13 @@ def _compute_vectors_vit(
             vit_batch_output: _VITBatchOutput = future.result()
 
             if output_mode == VITOutputMode.ATTENTION_MAP:
-
-                # Convert to (batch, layers, heads, seq_len, seq_len)
-                per_frame = torch.stack(vit_batch_output.attention_maps, dim=1)
-
-                for frame_attention in per_frame:
-                    yield frame_attention.cpu().numpy().astype(np.float16)
+                output_selection = vit_batch_output.attention_maps
             elif output_mode == VITOutputMode.CLS_TOKEN:
-                cls_embeddings_batch = vit_batch_output.output_features[:, 0, :].cpu().numpy()
-                yield from cls_embeddings_batch
+                output_selection = vit_batch_output.output_features
             else:
                 raise ValueError(f"Unknown output mode: {output_mode}")
+
+            yield from output_selection[:, 0, :].cpu().numpy()
 
     # Create a single thread pool for all image batches
     with ThreadPoolExecutor(max_workers=len(models)) as e:
@@ -338,12 +343,14 @@ def _calculate_scores_vit_attention(packed: Tuple[int, npt.NDArray[np.float16]])
 
 
 CONVERT_VIT_CLS = ConversionScoringFunctions(
+    name="vit_cls_token",
     conversion=partial(_compute_vectors_vit, VITOutputMode.CLS_TOKEN),
     scoring=_calculate_scores_vit_cls,
     weights=ScoreWeights(low_entropy=0.5, variance=0.2, saliency=0.5, energy=0.7),
 )
 
 CONVERT_VIT_ATTENTION = ConversionScoringFunctions(
+    name="vit_attention_map",
     conversion=partial(_compute_vectors_vit, VITOutputMode.ATTENTION_MAP),
     scoring=_calculate_scores_vit_attention,
     weights=ScoreWeights(low_entropy=0.4, variance=0.1, saliency=0.4, energy=0.2),

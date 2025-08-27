@@ -13,6 +13,7 @@
 * Broke CLI into multiple commands: `content` for content aware and `classic` for down-sampling.
 * Implemented the down-sampling mode. 
 
+
 0.4.0 - (2025-06-21)
 ------------------
 

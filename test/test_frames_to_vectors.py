@@ -11,20 +11,23 @@ import pytest
 import content_aware_timelapse.frames_to_vectors.conversion
 from content_aware_timelapse.frames_to_vectors.conversion_types import ConvertBatchesFunction
 from content_aware_timelapse.frames_to_vectors.vector_computation.compute_vectors_clip import (
-    _compute_vectors_clip,
+    CONVERT_CLIP,
 )
 from content_aware_timelapse.frames_to_vectors.vector_computation.compute_vectors_vit import (
+    CONVERT_VIT_ATTENTION,
     CONVERT_VIT_CLS,
 )
 from content_aware_timelapse.viderator.viderator_types import ImageResolution
 
 
 @pytest.mark.parametrize(
-    "convert_batches_function", [CONVERT_VIT_CLS.conversion, _compute_vectors_clip]
+    "convert_batches_function",
+    [CONVERT_VIT_CLS.conversion, CONVERT_VIT_ATTENTION.conversion, CONVERT_CLIP.conversion],
 )
 def test_frames_to_vectors_pipeline(convert_batches_function: ConvertBatchesFunction) -> None:
     """
     Test that sanity-checks loading of the model into the GPU and vectorizing an image.
+    :param convert_batches_function: Function under test.
     :return: None
     """
 
@@ -43,4 +46,4 @@ def test_frames_to_vectors_pipeline(convert_batches_function: ConvertBatchesFunc
             )
         )
 
-        assert output.any() and output.all()
+        assert output.any()

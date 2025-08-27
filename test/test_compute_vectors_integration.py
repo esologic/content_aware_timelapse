@@ -3,6 +3,9 @@ End -> End Testing of the vector computation and sorting.
 """
 
 from test.assets import (
+    IRL_VS_SOFTWARE_1,
+    IRL_VS_SOFTWARE_2,
+    IRL_VS_SOFTWARE_3,
     SORTED_BENCH_SCENES_PATHS,
     SORTED_STREAM_GENERIC_PATHS,
     SORTED_STREAM_SOFTWARE_PATHS,
@@ -39,6 +42,9 @@ from content_aware_timelapse.viderator.viderator_types import ImageSourceType
     [
         list(map(image_common.load_rgb_image, SORTED_BENCH_SCENES_PATHS)),
         list(map(image_common.load_rgb_image, SORTED_STREAM_SOFTWARE_PATHS)),
+        list(map(image_common.load_rgb_image, IRL_VS_SOFTWARE_1)),
+        list(map(image_common.load_rgb_image, IRL_VS_SOFTWARE_2)),
+        list(map(image_common.load_rgb_image, IRL_VS_SOFTWARE_3)),
         list(map(image_common.load_rgb_image, SORTED_STREAM_GENERIC_PATHS)),
     ],
 )
