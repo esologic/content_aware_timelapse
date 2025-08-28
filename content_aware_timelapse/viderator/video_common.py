@@ -265,7 +265,7 @@ def frames_in_video_opencv(
 ) -> VideoFrames:
     """
     Creates an interface to read each frame from a video into local memory for
-    analysis + manipulation. Uses openCV under the hood to retrive the frames.
+    analysis + manipulation. Uses openCV under the hood to retrieve the frames.
 
     :param video_path: The path to the video file on disk.
     :param video_fps: Can be used to override the actual FPS of the video.

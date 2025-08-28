@@ -106,6 +106,19 @@ def cli() -> None:
     default=600,
     show_default=True,
 )
+@click.option(
+    "--buffer-size",
+    "-b",
+    type=click.IntRange(min=0),
+    help=(
+        "The number of frames to load into an in-memory buffer. "
+        "This makes sure the GPUs have fast access to more frames rather than have the GPU "
+        "waiting on disk/network IO."
+    ),
+    required=False,
+    default=None,
+    show_default=True,
+)
 @create_enum_option(
     arg_flag="--backend",
     help_message="Sets which vectorization backend is used.",
@@ -135,6 +148,7 @@ def content(  # pylint: disable=too-many-locals
     duration: float,
     output_fps: float,
     batch_size: int,
+    buffer_size: Optional[int],
     backend: VectorBackend,
     vectors_path: Optional[Path],
     viz_path: Optional[Path],
@@ -150,6 +164,7 @@ def content(  # pylint: disable=too-many-locals
     :param duration: See click docs.
     :param output_fps: See click docs.
     :param batch_size: See click docs.
+    :param buffer_size: See click docs.
     :param backend: See click docs.
     :param vectors_path: See click docs.
     :param viz_path: See click docs.
@@ -168,6 +183,7 @@ def content(  # pylint: disable=too-many-locals
         duration=duration,
         output_fps=output_fps,
         batch_size=batch_size,
+        buffer_size=buffer_size if buffer_size is not None else batch_size,
         conversion_scoring_functions=lookup[backend],
         vectors_path=vectors_path,
         plot_path=viz_path,

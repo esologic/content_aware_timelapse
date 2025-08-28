@@ -76,6 +76,7 @@ def create_timelapse(  # pylint: disable=too-many-locals
     duration: float,
     output_fps: float,
     batch_size: int,
+    buffer_size: int,
     conversion_scoring_functions: ConversionScoringFunctions,
     vectors_path: Optional[Path],
     plot_path: Optional[Path],
@@ -89,6 +90,8 @@ def create_timelapse(  # pylint: disable=too-many-locals
     :param output_fps: Desired output video fps.
     :param batch_size: The number of frames from the input video to vectorize at once. The
     vectorization functions are responsible for doing the parallel loads onto the GPU.
+    :param buffer_size: The number of frames to load into an in-memory buffer. This makes sure
+    the GPUs have fast access to more frames rather than have the GPU waiting on disk/network IO.
     :param conversion_scoring_functions: A tuple of callables that contain the vectorization
     function and the function to score those vectors. Lets us swap the backend between different
     CV processes.
@@ -106,11 +109,17 @@ def create_timelapse(  # pylint: disable=too-many-locals
 
     LOGGER.info(f"Total frames to process: {frames_count.total_frame_count}.")
 
+    if buffer_size > 0:
+        frame_source = iterator_common.preload_into_memory(
+            source=frames_count.frames,
+            buffer_size=buffer_size,
+        )
+    else:
+        frame_source = frames_count.frames
+
     vectors: Iterator[npt.NDArray[np.float16]] = (
         content_aware_timelapse.frames_to_vectors.conversion.frames_to_vectors(
-            frames=iterator_common.preload_into_memory(
-                source=frames_count.frames, buffer_size=batch_size * 3
-            ),
+            frames=frame_source,
             intermediate_path=vectors_path,
             input_signature=input_signature,
             batch_size=batch_size,

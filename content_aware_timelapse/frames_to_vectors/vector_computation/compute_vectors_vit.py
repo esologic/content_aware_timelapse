@@ -6,7 +6,7 @@ import logging
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from enum import Enum
 from functools import partial
-from typing import Callable, Iterator, List, NamedTuple, Tuple, cast
+from typing import Callable, Iterator, List, Tuple, cast
 
 import more_itertools
 import numpy as np
@@ -86,15 +86,6 @@ class VITOutputMode(int, Enum):
     ATTENTION_MAP = 1
 
 
-class _VITBatchOutput(NamedTuple):
-    """
-    Output from the GPU.
-    """
-
-    output_features: Tensor
-    attention_maps: Tensor
-
-
 def _compute_vectors_vit(
     output_mode: VITOutputMode,
     frame_batches: Iterator[List[RGBInt8ImageType]],
@@ -107,7 +98,8 @@ def _compute_vectors_vit(
     :return: Iterator of vectors, one per input frame.
     """
 
-    timm.layers.set_fused_attn(False)
+    if output_mode == VITOutputMode.ATTENTION_MAP:
+        timm.layers.set_fused_attn(False)
 
     LOGGER.debug(f"Detected {torch.cuda.device_count()} GPUs. Loading Model")
 
@@ -128,21 +120,23 @@ def _compute_vectors_vit(
                 .cuda(device=gpu_index)
             )
 
-            model.attention_weights_container = []  # type: ignore[assignment]
+            if output_mode == VITOutputMode.ATTENTION_MAP:
 
-            def hook_fn(_module: Dropout, _input: Tuple[Tensor], output: Tensor) -> None:
-                """
-                Hook function to capture attention weights.
-                'output' of attn.attn_drop is:
-                    (batch_size, num_heads, sequence_length, sequence_length)
-                """
+                model.attention_weights_container = []  # type: ignore[assignment]
 
-                model.attention_weights_container.append(output.detach())
+                def hook_fn(_module: Dropout, _input: Tuple[Tensor], output: Tensor) -> None:
+                    """
+                    Hook function to capture attention weights.
+                    'output' of attn.attn_drop is:
+                        (batch_size, num_heads, sequence_length, sequence_length)
+                    """
 
-            # Iterate through each Transformer block and register a hook on its attention module
-            for name, module in model.named_modules():
-                if "attn_drop" in name:
-                    module.register_forward_hook(hook_fn)
+                    model.attention_weights_container.append(output.detach())
+
+                # Iterate through each Transformer block and register a hook on its attention module
+                for name, module in model.named_modules():
+                    if "attn_drop" in name:
+                        module.register_forward_hook(hook_fn)
 
             return model
         except RuntimeError:
@@ -154,7 +148,7 @@ def _compute_vectors_vit(
 
     def process_images_for_model(
         image_batch: List[RGBInt8ImageType], model: torch.nn.Module
-    ) -> _VITBatchOutput:
+    ) -> Tensor:
         """
         Preprocesses a batch of images and extracts feature vectors AND attention weights.
 
@@ -165,13 +159,16 @@ def _compute_vectors_vit(
         """
         LOGGER.debug("Sent images for inference.")
 
-        # Clear previous attention weights before new inference This is CRUCIAL to ensure you only
-        # get attention for the current batch.
-        model.attention_weights_container.clear()
+        if output_mode == VITOutputMode.ATTENTION_MAP:
+            # Clear previous attention weights before new inference This is CRUCIAL to ensure you
+            # only get attention for the current batch.
+            model.attention_weights_container.clear()
 
         tensor_image_batch = torch.stack(
             [VIT_IMAGE_TRANSFORM(Image.fromarray(img)).to(torch.float16) for img in image_batch]
         )
+
+        del image_batch
 
         # Pin memory for better performance during transfer to GPU
         pinned = tensor_image_batch.pin_memory()
@@ -184,16 +181,16 @@ def _compute_vectors_vit(
         with torch.no_grad():
             LOGGER.debug(f"Sending images to {device}...")
 
-            output = _VITBatchOutput(
-                output_features=model.forward_features(tensor_image_batch),
-                attention_maps=torch.stack(model.attention_weights_container, dim=1),
-            )
+            features = model.forward_features(tensor_image_batch)
 
-            LOGGER.debug(
-                f"Got back result. Features Shape: {output.output_features.shape}, "
-                f"Attention Maps Length: {len(output.attention_maps)}, "
-                f"Shape: {output.attention_maps[0].shape}"
-            )
+            if output_mode == VITOutputMode.CLS_TOKEN:
+                output: Tensor = features
+            elif output_mode == VITOutputMode.ATTENTION_MAP:
+                output = torch.stack(model.attention_weights_container, dim=1)
+            else:
+                raise ValueError("Unknown output_mode.")
+
+            LOGGER.debug(f"Got back result. Shape: {output.shape}, ")
 
             return output
 
@@ -205,11 +202,7 @@ def _compute_vectors_vit(
         GPUs.
 
         The images are preprocessed, converted to FP16, and passed through each model to obtain
-        feature vectors. The final result is an iterator over the vectors.
-
-        :param image_batches: List of image batches (each containing a list of RGB images).
-        :param executor: A ThreadPoolExecutor to handle concurrent image processing.
-        :return: Iterator of feature vectors, one per image.
+        feature vectors. The final result is an iterator over the vectors, one per frame.
         """
         # Submit image batches to thread pool
         futures = [
@@ -219,16 +212,15 @@ def _compute_vectors_vit(
 
         # Collect results as they are completed
         for future in as_completed(futures):
-            vit_batch_output: _VITBatchOutput = future.result()
+            output_selection = future.result()
 
-            if output_mode == VITOutputMode.ATTENTION_MAP:
-                output_selection = vit_batch_output.attention_maps
-            elif output_mode == VITOutputMode.CLS_TOKEN:
-                output_selection = vit_batch_output.output_features
-            else:
-                raise ValueError(f"Unknown output mode: {output_mode}")
+            # Move to CPU once, then yield one frame at a time
+            output_cpu = output_selection[:, 0, :].cpu()
+            for frame in output_cpu:
+                yield frame.numpy()
 
-            yield from output_selection[:, 0, :].cpu().numpy()
+            # Free references ASAP
+            del output_selection, output_cpu
 
     # Create a single thread pool for all image batches
     with ThreadPoolExecutor(max_workers=len(models)) as e:
@@ -287,6 +279,8 @@ def _calculate_scores_vit_cls(packed: Tuple[int, npt.NDArray[np.float16]]) -> In
         # If no positive values, entropy is conventionally 0 (or adjust as needed)
         entropy_score = 0.0
 
+    del packed
+
     return IndexScores(
         frame_index=index,
         entropy=entropy_score,
@@ -332,6 +326,8 @@ def _calculate_scores_vit_attention(packed: Tuple[int, npt.NDArray[np.float16]])
         entropy_score = -np.sum(probs * np.log(probs + 1e-8))
     else:
         entropy_score = 0.0
+
+    del packed
 
     return IndexScores(
         frame_index=index,

@@ -89,6 +89,7 @@ def preload_into_memory(source: Iterator[T], buffer_size: int) -> Iterator[T]:
 
         for input_item in source:
             item_queue.put(input_item)
+            del input_item
 
         item_queue.put(sentinel)
 

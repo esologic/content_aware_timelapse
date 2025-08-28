@@ -49,6 +49,7 @@ def test_create_timelapse(
         conversion_scoring_functions=conversion_scoring_functions,
         vectors_path=vectors_path,
         plot_path=None,
+        buffer_size=0,
     )
 
     video_frames = video_common.frames_in_video_opencv(
@@ -93,6 +94,7 @@ def test_create_timelapses_output(conversion_scoring_functions: ConversionScorin
         conversion_scoring_functions=conversion_scoring_functions,
         vectors_path=None,
         plot_path=None,
+        buffer_size=0,
     )
 
     video_frames = video_common.frames_in_video_opencv(
