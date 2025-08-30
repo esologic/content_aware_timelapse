@@ -24,5 +24,5 @@ def create_black_frames_iterator(image_resolution: ImageResolution, count: int) 
     for _ in range(count):
         yield cast(
             RGBInt8ImageType,
-            np.zeros(shape=(image_resolution.width, image_resolution.height, 3), dtype=np.uint8),
+            np.zeros(shape=(image_resolution.height, image_resolution.width, 3), dtype=np.uint8),
         )
