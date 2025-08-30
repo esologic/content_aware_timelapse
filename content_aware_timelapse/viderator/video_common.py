@@ -501,12 +501,13 @@ def write_source_to_disk_forward(
             )
             writer.write(rgb_frame)
 
-        for index, image in enumerate(frame_source):
-            LOGGER.debug(f"Writing frame #{index} to file: {video_path}")
-            write_frame(image)
-            yield image
-
-        writer.release()
+        try:
+            for index, image in enumerate(frame_source):
+                LOGGER.debug(f"Writing frame #{index} to file: {video_path}")
+                write_frame(image)
+                yield image
+        finally:
+            writer.release()
 
     try:
         if audio_paths is None:
