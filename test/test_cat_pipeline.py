@@ -22,14 +22,21 @@ from content_aware_timelapse.viderator import video_common
 CURRENT_DIRECTORY = Path(__file__).parent.resolve()
 
 
+@pytest.mark.parametrize("buffer_size", [0, 100])
+@pytest.mark.parametrize("batch_size", [50, 100])
 @pytest.mark.parametrize(
     "conversion_scoring_functions", [CONVERT_VIT_CLS, CONVERT_VIT_ATTENTION, CONVERT_CLIP]
 )
 def test_create_timelapse(
-    tmpdir: str, conversion_scoring_functions: ConversionScoringFunctions
+    tmpdir: str,
+    buffer_size: int,
+    batch_size: int,
+    conversion_scoring_functions: ConversionScoringFunctions,
 ) -> None:
     """
     Using a test asset, runs the main `create_timelapse` function and inspects the output.
+    :param buffer_size: Passed to function.
+    :param batch_size: Passed to function.
     :param tmpdir: Test fixture.
     :return: None
     """
@@ -45,11 +52,11 @@ def test_create_timelapse(
         output_path=output_path,
         duration=duration,
         output_fps=output_fps,
-        batch_size=100,
+        batch_size=batch_size,
         conversion_scoring_functions=conversion_scoring_functions,
         vectors_path=vectors_path,
         plot_path=None,
-        buffer_size=0,
+        buffer_size=buffer_size,
     )
 
     video_frames = video_common.frames_in_video_opencv(

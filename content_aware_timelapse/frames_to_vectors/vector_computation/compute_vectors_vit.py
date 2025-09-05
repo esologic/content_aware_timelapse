@@ -6,7 +6,7 @@ import logging
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from enum import Enum
 from functools import partial
-from typing import Callable, Iterator, List, Tuple, cast
+from typing import Callable, Iterator, List, Optional, Tuple, cast
 
 import more_itertools
 import numpy as np
@@ -15,6 +15,7 @@ import torch
 import torchvision.transforms.functional as F
 from numpy import typing as npt
 from PIL import Image
+from pympler.tracker import SummaryTracker
 from torch import Tensor
 from torch.nn.modules.dropout import Dropout
 from torchvision import transforms
@@ -28,9 +29,11 @@ from content_aware_timelapse.viderator.viderator_types import PILImage, RGBInt8I
 
 LOGGER = logging.getLogger(__name__)
 
+VIT_SIDE_LENGTH = 224
 
-def create_padded_square_resizer(
-    side_length: int = 224, fill_color: Tuple[int, int, int] = (123, 116, 103)
+
+def _create_padded_square_resizer(
+    side_length: int = VIT_SIDE_LENGTH, fill_color: Tuple[int, int, int] = (123, 116, 103)
 ) -> Callable[[PILImage], PILImage]:
     """
     Create a function that when called resizes the input image to a square with a pad.
@@ -70,7 +73,7 @@ def create_padded_square_resizer(
 
 VIT_IMAGE_TRANSFORM = transforms.Compose(
     [
-        create_padded_square_resizer(),
+        _create_padded_square_resizer(),
         transforms.ToTensor(),
         transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
     ]
@@ -89,12 +92,15 @@ class VITOutputMode(int, Enum):
 def _compute_vectors_vit(
     output_mode: VITOutputMode,
     frame_batches: Iterator[List[RGBInt8ImageType]],
+    track_memory_usage: bool = False,
 ) -> Iterator[npt.NDArray[np.float16]]:
     """
     Computes new vectors from the input frames. Uses GPU acceleration if available.
     :param output_mode: Desired output mode, controls the format of the ouput vectors.
     :param frame_batches: Iterator of lists of frames to compute vectors. Frames are processed
     in batches, but output will be one vector per frame.
+    :param track_memory_usage: If given, debugging information about memory usage over time
+    will be printed to identify memory leaks.
     :return: Iterator of vectors, one per input frame.
     """
 
@@ -168,8 +174,6 @@ def _compute_vectors_vit(
             [VIT_IMAGE_TRANSFORM(Image.fromarray(img)).to(torch.float16) for img in image_batch]
         )
 
-        del image_batch
-
         # Pin memory for better performance during transfer to GPU
         pinned = tensor_image_batch.pin_memory()
 
@@ -219,14 +223,17 @@ def _compute_vectors_vit(
             for frame in output_cpu:
                 yield frame.numpy()
 
-            # Free references ASAP
-            del output_selection, output_cpu
+    summary_tracker: Optional[SummaryTracker] = None
+
+    if track_memory_usage:
+        summary_tracker = SummaryTracker()  # type:ignore[no-untyped-call]
 
     # Create a single thread pool for all image batches
     with ThreadPoolExecutor(max_workers=len(models)) as e:
         for batch in more_itertools.chunked(frame_batches, len(models)):
             yield from images_to_feature_vectors(batch, e)
-            # TODO: We can print reference counts here to look for memory leaks.
+            if summary_tracker is not None:
+                summary_tracker.print_diff()  # type:ignore[no-untyped-call]
 
 
 def _calculate_scores_vit_cls(packed: Tuple[int, npt.NDArray[np.float16]]) -> IndexScores:
@@ -279,8 +286,6 @@ def _calculate_scores_vit_cls(packed: Tuple[int, npt.NDArray[np.float16]]) -> In
         # If no positive values, entropy is conventionally 0 (or adjust as needed)
         entropy_score = 0.0
 
-    del packed
-
     return IndexScores(
         frame_index=index,
         entropy=entropy_score,
@@ -327,8 +332,6 @@ def _calculate_scores_vit_attention(packed: Tuple[int, npt.NDArray[np.float16]])
     else:
         entropy_score = 0.0
 
-    del packed
-
     return IndexScores(
         frame_index=index,
         entropy=float(entropy_score),
@@ -343,6 +346,7 @@ CONVERT_VIT_CLS = ConversionScoringFunctions(
     conversion=partial(_compute_vectors_vit, VITOutputMode.CLS_TOKEN),
     scoring=_calculate_scores_vit_cls,
     weights=ScoreWeights(low_entropy=0.5, variance=0.2, saliency=0.5, energy=0.7),
+    max_side_length=VIT_SIDE_LENGTH,
 )
 
 CONVERT_VIT_ATTENTION = ConversionScoringFunctions(
@@ -350,4 +354,5 @@ CONVERT_VIT_ATTENTION = ConversionScoringFunctions(
     conversion=partial(_compute_vectors_vit, VITOutputMode.ATTENTION_MAP),
     scoring=_calculate_scores_vit_attention,
     weights=ScoreWeights(low_entropy=0.4, variance=0.1, saliency=0.4, energy=0.2),
+    max_side_length=VIT_SIDE_LENGTH,
 )

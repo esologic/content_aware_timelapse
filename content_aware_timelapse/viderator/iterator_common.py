@@ -8,7 +8,8 @@ import datetime
 import itertools
 import logging
 import threading
-from queue import Queue
+from queue import Full, Queue
+from threading import Event
 from typing import Deque, Iterator, Tuple, TypeVar
 
 LOGGER = logging.getLogger(__name__)
@@ -65,7 +66,9 @@ def items_per_second(source: Iterator[T], queue_size: int = 60) -> Iterator[T]:
     return map(yield_item, source)
 
 
-def preload_into_memory(source: Iterator[T], buffer_size: int) -> Iterator[T]:
+def preload_into_memory(
+    source: Iterator[T], buffer_size: int, fill_buffer_before_yield: bool = False
+) -> Iterator[T]:
     """
     Iterators that involve reading from disk can be slow. To make sure that consumers always
     have a nice chunk of items to consume from RAM, this function creates a worker thread that
@@ -74,9 +77,13 @@ def preload_into_memory(source: Iterator[T], buffer_size: int) -> Iterator[T]:
     :param source: Input iterator.
     :param buffer_size: Size of the output queue. If the objects in `source` are big, this is going
     to decide how much RAM is allocated for this process.
+    :param fill_buffer_before_yield: Blocks until the intermediate queue has been filled completely
+    the first time. This gives consumers a chunk of in-memory frames to work off of before
+    having to wait around on IO again.
     :return: An iterator of the buffered items from `source`.
     """
 
+    buffer_filled = Event()
     item_queue: "Queue[T | object]" = Queue(maxsize=buffer_size)
     sentinel = object()  # Unique object to signal the end of the iterator
 
@@ -86,9 +93,16 @@ def preload_into_memory(source: Iterator[T], buffer_size: int) -> Iterator[T]:
         `.put` operations block if the queue is full, which is used to make sure it is topped up.
         :return: None
         """
-
         for input_item in source:
-            item_queue.put(input_item)
+
+            if fill_buffer_before_yield and not buffer_filled.is_set():
+                try:
+                    item_queue.put_nowait(input_item)
+                except Full:
+                    buffer_filled.set()
+            else:
+                item_queue.put(input_item)
+
             del input_item
 
         item_queue.put(sentinel)
@@ -97,8 +111,17 @@ def preload_into_memory(source: Iterator[T], buffer_size: int) -> Iterator[T]:
     thread = threading.Thread(target=worker, daemon=True)
     thread.start()
 
+    waiting_on_buffer = fill_buffer_before_yield
+
     # Iterator that consumes from the queue
     while True:
+
+        if waiting_on_buffer:
+            LOGGER.debug("Waiting for queue to fill.")
+            buffer_filled.wait()
+            LOGGER.debug("Queue full, yielding items.")
+            waiting_on_buffer = False
+
         output_item = item_queue.get()
         if output_item is sentinel:
             break

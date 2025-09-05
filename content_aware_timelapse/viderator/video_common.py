@@ -18,7 +18,7 @@ import numpy as np
 from ffmpeg.nodes import FilterableStream
 from vidgear.gears import WriteGear
 
-from content_aware_timelapse.viderator.image_common import image_resolution
+from content_aware_timelapse.viderator.image_common import image_resolution, resize_image
 from content_aware_timelapse.viderator.iterator_common import first_item_from_iterator
 from content_aware_timelapse.viderator.viderator_types import (
     ImageResolution,
@@ -33,7 +33,7 @@ LOGGER = logging.getLogger(__name__)
 logging.getLogger("WriteGear").setLevel(logging.ERROR)
 
 
-def _write_video(video_path: Path, audio: FilterableStream, output_path: Path) -> None:
+def _write_video_with_audio(video_path: Path, audio: FilterableStream, output_path: Path) -> None:
     """
     Adds an audio file to a video file. Copied from: https://stackoverflow.com/a/65547166
     :param video_path: Path to the video file.
@@ -73,7 +73,9 @@ def add_wav_to_video(video_path: Path, audio_path: Path, output_path: Path) -> N
     :param output_path: The path to write the new file to.
     :return: None
     """
-    _write_video(video_path=video_path, audio=_read_wav(audio_path), output_path=output_path)
+    _write_video_with_audio(
+        video_path=video_path, audio=_read_wav(audio_path), output_path=output_path
+    )
 
 
 def add_wavs_to_video(video_path: Path, audio_paths: List[Path], output_path: Path) -> None:
@@ -84,7 +86,7 @@ def add_wavs_to_video(video_path: Path, audio_paths: List[Path], output_path: Pa
     :param output_path: The path to write the new file to.
     :return: None
     """
-    _write_video(
+    _write_video_with_audio(
         video_path=video_path,
         audio=ffmpeg.concat(*[_read_wav(audio_path) for audio_path in audio_paths], v=0, a=1),
         output_path=output_path,
@@ -553,34 +555,6 @@ def write_source_to_disk_consume(
             high_quality=high_quality,
         )
     )
-
-
-def resize_image(
-    image: RGBInt8ImageType, resolution: ImageResolution, delete: bool = False
-) -> RGBInt8ImageType:
-    """
-    Resizes an image to the input resolution.
-    Uses, `cv2.INTER_CUBIC`, which is visually good-looking but somewhat slow.
-    May want to be able to pass this in.
-    :param image: To scale.
-    :param resolution: Output resolution.
-    :param delete: If true, `del` will be used on `image` to force it's memory to be released.
-    :return: Scaled image.
-    """
-
-    output = cast(
-        RGBInt8ImageType,
-        cv2.resize(image, (resolution.height, resolution.width), interpolation=cv2.INTER_CUBIC),
-    )
-
-    if delete:
-        # The image has now been 'consumed', and can't be used again.
-        # We delete this frame here to avoid memory leaks.
-        # Not really sure if this is needed, but it shouldn't cause harm.
-        del image
-
-    # The scaled image.
-    return output
 
 
 def resize_source(source: ImageSourceType, resolution: ImageResolution) -> ImageSourceType:

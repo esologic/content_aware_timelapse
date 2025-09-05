@@ -2,7 +2,7 @@
 Types needed to describe the frames to vectors conversions.
 """
 
-from typing import Iterator, List, NamedTuple, Protocol, Tuple, TypedDict
+from typing import Iterator, List, NamedTuple, Optional, Protocol, Tuple, TypedDict
 
 import numpy as np
 import numpy.typing as npt
@@ -74,3 +74,8 @@ class ConversionScoringFunctions(NamedTuple):
     conversion: ConvertBatchesFunction
     scoring: ScoreVectorsFunction
     weights: ScoreWeights
+    max_side_length: Optional[int] = None
+    """
+    Allows pre-processing steps to shrink the input images to the exact side length, or nearby
+    to decrease overall memory pressure, or pack more frames into memory before being processed.
+    """

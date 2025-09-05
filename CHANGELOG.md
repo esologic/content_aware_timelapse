@@ -1,5 +1,14 @@
 # Changelog
 
+0.7.0 - (2025-09-??)
+------------------
+
+* `--buffer-size` is now an independent argument from batch size, this is how many frames are
+loaded into memory from disk prior to feeding any frames to the GPU.
+* Input images are pre-shrunk to near their final size before sitting in memory to reduce the
+overall memory footprint of the application.
+
+
 0.6.0 - (2025-08-25)
 ------------------
 

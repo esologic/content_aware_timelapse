@@ -4,6 +4,7 @@ Main functionality, defines the pipeline.
 
 import itertools
 import logging
+from functools import partial
 from pathlib import Path
 from typing import Iterator, List, NamedTuple, Optional, Set
 
@@ -19,7 +20,7 @@ from content_aware_timelapse.frames_to_vectors.conversion_types import (
     IndexScores,
 )
 from content_aware_timelapse.vector_file import create_videos_signature
-from content_aware_timelapse.viderator import iterator_common, video_common
+from content_aware_timelapse.viderator import image_common, iterator_common, video_common
 from content_aware_timelapse.viderator.video_common import VideoFrames
 from content_aware_timelapse.viderator.viderator_types import ImageSourceType
 
@@ -109,13 +110,29 @@ def create_timelapse(  # pylint: disable=too-many-locals
 
     LOGGER.info(f"Total frames to process: {frames_count.total_frame_count}.")
 
+    frame_source = tqdm(
+        frames_count.frames,
+        total=frames_count.total_frame_count,
+        unit="Frames",
+        ncols=100,
+        desc="Reading Images",
+        maxinterval=1,
+    )
+
+    if conversion_scoring_functions.max_side_length is not None:
+        frame_source = map(
+            partial(
+                image_common.resize_image_max_side,
+                max_side_length=conversion_scoring_functions.max_side_length,
+                delete=True,
+            ),
+            frame_source,
+        )
+
     if buffer_size > 0:
         frame_source = iterator_common.preload_into_memory(
-            source=frames_count.frames,
-            buffer_size=buffer_size,
+            source=frame_source, buffer_size=buffer_size, fill_buffer_before_yield=True
         )
-    else:
-        frame_source = frames_count.frames
 
     vectors: Iterator[npt.NDArray[np.float16]] = (
         content_aware_timelapse.frames_to_vectors.conversion.frames_to_vectors(
@@ -139,6 +156,7 @@ def create_timelapse(  # pylint: disable=too-many-locals
                 unit="Frames",
                 ncols=100,
                 desc="Scoring Images",
+                maxinterval=1,
             ),
         )
     )

@@ -29,7 +29,7 @@ def test_create_padded_square_resizer(
     fill_color: Tuple[int, int, int],
     input_resolution: ImageResolution,
 ) -> None:
-    resizer = compute_vectors_vit.create_padded_square_resizer(
+    resizer = compute_vectors_vit._create_padded_square_resizer(  # pylint: disable=protected-access
         side_length=side_length, fill_color=fill_color
     )
 
