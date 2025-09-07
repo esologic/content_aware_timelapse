@@ -7,6 +7,7 @@
 loaded into memory from disk prior to feeding any frames to the GPU.
 * Input images are pre-shrunk to near their final size before sitting in memory to reduce the
 overall memory footprint of the application.
+* Determined that video decode speed is the key bottleneck to throughput. Started work on fix.
 
 
 0.6.0 - (2025-08-25)

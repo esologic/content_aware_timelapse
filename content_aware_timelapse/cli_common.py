@@ -12,7 +12,7 @@ from click import Context, Parameter
 E = TypeVar("E", bound=Enum)
 
 
-def create_enum_option(  # type: ignore[misc]
+def create_enum_option(  # type: ignore[explicit-any]
     arg_flag: str,
     help_message: str,
     default: E,

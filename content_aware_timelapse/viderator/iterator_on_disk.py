@@ -28,7 +28,7 @@ class SerializeItem(Protocol):
     Describes a function that writes a given item out to disk.
     """
 
-    def __call__(self, path: Path, items: List[Any]) -> None:  # type: ignore[misc]
+    def __call__(self, path: Path, items: List[Any]) -> None:  # type: ignore[explicit-any]
         """
         :param path: Path to write the serialized object to on disk.
         :param items: List of objects to serialize.
@@ -41,7 +41,7 @@ class DeSerializeItem(Protocol):
     Describes a function that loads an item from disk back into memory.
     """
 
-    def __call__(self, path: Path) -> List[Any]:  # type: ignore[misc]
+    def __call__(self, path: Path) -> List[Any]:  # type: ignore[explicit-any]
         """
         :param path: Path to the object on disk.
         :return: Items loaded back into memory.
@@ -69,7 +69,7 @@ def serialize_pickle(path: Path, items: List[T]) -> None:
         pickle.dump(items, p)
 
 
-def deserialize_pickle(path: Path) -> List[Any]:  # type: ignore[misc]
+def deserialize_pickle(path: Path) -> List[Any]:  # type: ignore[explicit-any]
     """
     Loads a pickled item from disk using the built-in pickle module.
     :param path: Path to the object on disk.
@@ -77,7 +77,7 @@ def deserialize_pickle(path: Path) -> List[Any]:  # type: ignore[misc]
     """
 
     with open(str(path), "rb") as p:
-        return cast(List[Any], pickle.load(p))  # type: ignore[misc]
+        return cast(List[Any], pickle.load(p))  # type: ignore[explicit-any]
 
 
 PICKLE_SERIALIZER = Serializer(serialize=serialize_pickle, deserialize=deserialize_pickle)

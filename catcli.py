@@ -142,7 +142,7 @@ def cli() -> None:
     ),
     required=False,
 )
-def content(  # pylint: disable=too-many-locals
+def content(  # pylint: disable=too-many-locals,too-many-positional-arguments
     input_files: List[Path],
     output_path: Path,
     duration: float,

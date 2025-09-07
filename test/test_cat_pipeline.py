@@ -17,7 +17,7 @@ from content_aware_timelapse.frames_to_vectors.vector_computation.compute_vector
     CONVERT_VIT_ATTENTION,
     CONVERT_VIT_CLS,
 )
-from content_aware_timelapse.viderator import video_common
+from content_aware_timelapse.viderator import frames_in_video
 
 CURRENT_DIRECTORY = Path(__file__).parent.resolve()
 
@@ -59,7 +59,7 @@ def test_create_timelapse(
         buffer_size=buffer_size,
     )
 
-    video_frames = video_common.frames_in_video_opencv(
+    video_frames = frames_in_video.frames_in_video_opencv(
         video_path=output_path,
     )
 
@@ -104,7 +104,7 @@ def test_create_timelapses_output(conversion_scoring_functions: ConversionScorin
         buffer_size=0,
     )
 
-    video_frames = video_common.frames_in_video_opencv(
+    video_frames = frames_in_video.frames_in_video_opencv(
         video_path=output_path,
     )
 

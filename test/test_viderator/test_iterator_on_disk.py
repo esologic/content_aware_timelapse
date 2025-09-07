@@ -11,7 +11,7 @@ import numpy as np
 import pytest
 
 from content_aware_timelapse import timeout_common
-from content_aware_timelapse.viderator import video_common
+from content_aware_timelapse.viderator import frames_in_video
 from content_aware_timelapse.viderator.iterator_on_disk import disk_buffer, tee_disk_cache
 
 
@@ -49,7 +49,7 @@ def test_disk_buffer() -> None:
     """
 
     source, expected_output = tee(
-        video_common.frames_in_video_opencv(
+        frames_in_video.frames_in_video_opencv(
             video_path=SAMPLE_TIMELAPSE_INPUT_PATH,
         ).frames,
         2,
@@ -71,7 +71,7 @@ def test_disk_buffer_speed() -> None:
     :return: None
     """
 
-    source = video_common.frames_in_video_opencv(
+    source = frames_in_video.frames_in_video_opencv(
         video_path=LONG_TEST_VIDEO_PATH,
     ).frames
 
@@ -83,7 +83,7 @@ def test_disk_buffer_speed() -> None:
     _buffered_frames, buffered_time = timeout_common.measure_execution_time(list, buffered_iterator)
     _opencv_frames, opencv_time = timeout_common.measure_execution_time(
         list,
-        video_common.frames_in_video_opencv(
+        frames_in_video.frames_in_video_opencv(
             video_path=LONG_TEST_VIDEO_PATH,
         ).frames,
     )

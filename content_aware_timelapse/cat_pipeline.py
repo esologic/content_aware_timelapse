@@ -14,6 +14,7 @@ from tqdm import tqdm
 
 import content_aware_timelapse.frames_to_vectors.conversion
 import content_aware_timelapse.frames_to_vectors.vector_computation.compute_vectors_vit
+import content_aware_timelapse.viderator.frames_in_video
 from content_aware_timelapse.frames_to_vectors import vector_scoring
 from content_aware_timelapse.frames_to_vectors.conversion_types import (
     ConversionScoringFunctions,
@@ -56,7 +57,7 @@ def load_input_videos(input_files: List[Path]) -> _FramesCount:
     """
 
     input_video_frames: List[VideoFrames] = list(
-        map(video_common.frames_in_video_opencv, input_files)
+        map(content_aware_timelapse.viderator.frames_in_video.frames_in_video_opencv, input_files)
     )
 
     all_input_frames = itertools.chain.from_iterable(
@@ -71,7 +72,7 @@ def load_input_videos(input_files: List[Path]) -> _FramesCount:
     )
 
 
-def create_timelapse(  # pylint: disable=too-many-locals
+def create_timelapse(  # pylint: disable=too-many-locals,too-many-positional-arguments
     input_files: List[Path],
     output_path: Path,
     duration: float,

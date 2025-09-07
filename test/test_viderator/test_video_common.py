@@ -13,12 +13,19 @@ import numpy as np
 import pytest
 
 from content_aware_timelapse import timeout_common
-from content_aware_timelapse.viderator import video_common
+from content_aware_timelapse.viderator import frames_in_video, video_common
+from content_aware_timelapse.viderator.frames_in_video import FramesInVideo
 from content_aware_timelapse.viderator.image_common import image_resolution
 from content_aware_timelapse.viderator.viderator_types import ImageResolution
 
+VISUALIZATION_ENABLED = False
+
 
 @pytest.mark.parametrize("video_path", [SAMPLE_TIMELAPSE_INPUT_PATH, LONG_TEST_VIDEO_PATH])
+@pytest.mark.parametrize(
+    "function_under_test",
+    [frames_in_video.frames_in_video_ffmpeg],
+)
 @pytest.mark.parametrize("video_fps", [None])
 @pytest.mark.parametrize("_reduce_fps_to", [None, 25, 15])
 @pytest.mark.parametrize(
@@ -26,8 +33,9 @@ from content_aware_timelapse.viderator.viderator_types import ImageResolution
     [None],
 )
 @pytest.mark.parametrize("starting_frame", [None, 0, 30])
-def test_frames_in_video(
+def test_frames_in_video(  # pylint: disable=too-many-locals
     video_path: Path,
+    function_under_test: FramesInVideo,
     video_fps: Optional[float],
     _reduce_fps_to: Optional[float],
     width_height: Optional[ImageResolution],
@@ -46,33 +54,59 @@ def test_frames_in_video(
     :return: None
     """
 
-    opencv_reader = video_common.frames_in_video_opencv(
+    opencv_reader = frames_in_video.frames_in_video_opencv(
         video_path=video_path,
         video_fps=video_fps,
         width_height=width_height,
         starting_frame=starting_frame,
     )
 
-    ffmpeg_reader = video_common.frames_in_video_ffmpeg(
+    test_reader = function_under_test(
         video_path=video_path,
         video_fps=video_fps,
         width_height=width_height,
         starting_frame=starting_frame,
+        reduce_fps_to=None,
     )
 
-    assert opencv_reader.original_fps == ffmpeg_reader.original_fps
-    assert opencv_reader.original_resolution == ffmpeg_reader.original_resolution
-    assert opencv_reader.total_frame_count == ffmpeg_reader.total_frame_count
+    assert opencv_reader.original_fps == test_reader.original_fps
+    assert opencv_reader.original_resolution == test_reader.original_resolution
+    assert opencv_reader.total_frame_count == test_reader.total_frame_count
 
-    ffmpeg_frames, ffmpeg_time = timeout_common.measure_execution_time(list, ffmpeg_reader.frames)
-    opencv_frames, opencv_time = timeout_common.measure_execution_time(list, opencv_reader.frames)
+    if VISUALIZATION_ENABLED:
+        test_iterator = video_common.display_frame_forward_opencv(
+            source=test_reader.frames,
+            window_name="Test Frames",
+            display_resolution=test_reader.original_resolution,
+        )
 
-    print(f"ffmpeg time: {ffmpeg_time}, opencv time: {opencv_time}, video: {video_path.name}")
+        opencv_iterator = video_common.display_frame_forward_opencv(
+            source=opencv_reader.frames,
+            window_name="OpenCV Frames",
+            display_resolution=opencv_reader.original_resolution,
+        )
+    else:
+        test_iterator = test_reader.frames
+        opencv_iterator = opencv_reader.frames
 
-    assert len(opencv_frames) == len(ffmpeg_frames)
+    test_frames, test_time = timeout_common.measure_execution_time(
+        list,
+        test_iterator,
+    )
 
-    for opencv_frame, ffmpeg_frame in zip(opencv_frames, ffmpeg_frames):
-        assert np.array_equal(opencv_frame, ffmpeg_frame)
+    opencv_frames, opencv_time = timeout_common.measure_execution_time(
+        list,
+        opencv_iterator,
+    )
+
+    print(
+        f"test read method time: {test_time}, opencv time: {opencv_time}, video: {video_path.name}"
+    )
+
+    assert len(opencv_frames) == len(test_frames)
+
+    for frame_index, (opencv_frame, ffmpeg_frame) in enumerate(zip(opencv_frames, test_frames)):
+        assert np.array_equal(opencv_frame, ffmpeg_frame), f"Frame #{frame_index} did not match"
 
         if width_height is not None:
             assert image_resolution(opencv_frame) == width_height
@@ -139,7 +173,7 @@ def test_write_source_to_disk_consume(
 
     assert is_video_valid(output_path)
 
-    video_frames = video_common.frames_in_video_opencv(
+    video_frames = frames_in_video.frames_in_video_opencv(
         video_path=output_path,
     )
 

@@ -18,7 +18,7 @@ from content_aware_timelapse.viderator.viderator_types import ImageSourceType
 LOGGER = logging.getLogger(__name__)
 
 
-def frames_to_vectors(
+def frames_to_vectors(  # pylint:disable=too-many-positional-arguments
     frames: ImageSourceType,
     intermediate_path: Optional[Path],
     input_signature: str,
