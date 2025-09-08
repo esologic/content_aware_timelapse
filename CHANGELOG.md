@@ -1,6 +1,6 @@
 # Changelog
 
-0.7.0 - (2025-09-??)
+0.7.0 - (2025-09-07)
 ------------------
 
 * `--buffer-size` is now an independent argument from batch size, this is how many frames are
