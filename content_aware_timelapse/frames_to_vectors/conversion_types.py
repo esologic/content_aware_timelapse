@@ -7,7 +7,11 @@ from typing import Iterator, List, NamedTuple, Optional, Protocol, Tuple, TypedD
 import numpy as np
 import numpy.typing as npt
 
-from content_aware_timelapse.viderator.viderator_types import RGBInt8ImageType
+from content_aware_timelapse.viderator.viderator_types import (
+    ImageResolution,
+    RGBInt8ImageType,
+    XYPoint,
+)
 
 
 class IndexScores(TypedDict):
@@ -21,6 +25,7 @@ class IndexScores(TypedDict):
     variance: float
     saliency: float
     energy: float
+    interesting_points: List[XYPoint]
 
 
 class ConvertBatchesFunction(Protocol):
@@ -43,10 +48,16 @@ class ScoreVectorsFunction(Protocol):
     Describes functions that convert vectors to numerical properties of the vectors.
     """
 
-    def __call__(self, packed: Tuple[int, npt.NDArray[np.float16]]) -> IndexScores:
+    def __call__(
+        self,
+        packed: Tuple[int, npt.NDArray[np.float16]],
+        original_source_resolution: ImageResolution,
+    ) -> IndexScores:
         """
         :param packed: A tuple, the index of the frame in the input and the calculated vectors
         for that frame.
+        :param original_source_resolution: Consumed in the `interesting_points` field of the output,
+        the original source resolution of the input frames as they exist pre-processing.
         :return: An IndexScores, which are the numerical properties of the vectors.
         """
 

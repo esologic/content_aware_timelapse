@@ -23,18 +23,19 @@ from content_aware_timelapse.frames_to_vectors.conversion_types import (
 from content_aware_timelapse.vector_file import create_videos_signature
 from content_aware_timelapse.viderator import image_common, iterator_common, video_common
 from content_aware_timelapse.viderator.video_common import VideoFrames
-from content_aware_timelapse.viderator.viderator_types import ImageSourceType
+from content_aware_timelapse.viderator.viderator_types import ImageResolution, ImageSourceType
 
 LOGGER = logging.getLogger(__name__)
 
 
-class _FramesCount(NamedTuple):
+class _FramesCountResolution(NamedTuple):
     """
     Intermediate type for keeping track of the total number of frames in an iterator.
     """
 
     total_frame_count: int
     frames: ImageSourceType
+    original_resolution: ImageResolution
 
 
 def calculate_output_frames(duration: float, output_fps: float) -> int:
@@ -48,7 +49,7 @@ def calculate_output_frames(duration: float, output_fps: float) -> int:
     return int(duration * output_fps)
 
 
-def load_input_videos(input_files: List[Path]) -> _FramesCount:
+def load_input_videos(input_files: List[Path]) -> _FramesCountResolution:
     """
     Helper function to combine the input videos.
     :param input_files: List of input videos.
@@ -64,11 +65,17 @@ def load_input_videos(input_files: List[Path]) -> _FramesCount:
         [video_frames.frames for video_frames in input_video_frames]
     )
 
-    return _FramesCount(
+    input_resolutions = [video_frames.original_resolution for video_frames in input_video_frames]
+
+    if len(input_video_frames) > 1:
+        raise ValueError("Input videos have different resolutions.")
+
+    return _FramesCountResolution(
         total_frame_count=sum(
             (video_frames.total_frame_count for video_frames in input_video_frames)
         ),
         frames=all_input_frames,
+        original_resolution=next(iter(input_resolutions)),
     )
 
 
@@ -107,13 +114,13 @@ def create_timelapse(  # pylint: disable=too-many-locals,too-many-positional-arg
 
     input_signature = create_videos_signature(video_paths=input_files)
 
-    frames_count = load_input_videos(input_files=input_files)
+    frames_count_resolution = load_input_videos(input_files=input_files)
 
-    LOGGER.info(f"Total frames to process: {frames_count.total_frame_count}.")
+    LOGGER.info(f"Total frames to process: {frames_count_resolution.total_frame_count}.")
 
     frame_source = tqdm(
-        frames_count.frames,
-        total=frames_count.total_frame_count,
+        frames_count_resolution.frames,
+        total=frames_count_resolution.total_frame_count,
         unit="Frames",
         ncols=100,
         desc="Reading Images",
@@ -141,7 +148,7 @@ def create_timelapse(  # pylint: disable=too-many-locals,too-many-positional-arg
             intermediate_path=vectors_path,
             input_signature=input_signature,
             batch_size=batch_size,
-            total_input_frames=frames_count.total_frame_count,
+            total_input_frames=frames_count_resolution.total_frame_count,
             convert_batches=conversion_scoring_functions.conversion,
         )
     )
@@ -150,10 +157,13 @@ def create_timelapse(  # pylint: disable=too-many-locals,too-many-positional-arg
 
     score_indexes: List[IndexScores] = list(
         map(
-            conversion_scoring_functions.scoring,
+            partial(
+                conversion_scoring_functions.scoring,
+                original_source_resolution=frames_count_resolution.original_resolution,
+            ),
             tqdm(
                 enumerate(vectors),
-                total=frames_count.total_frame_count,
+                total=frames_count_resolution.total_frame_count,
                 unit="Frames",
                 ncols=100,
                 desc="Scoring Images",

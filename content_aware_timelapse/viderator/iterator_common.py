@@ -105,6 +105,9 @@ def preload_into_memory(
 
             del input_item
 
+        # Unblock consumer in the case that the input iterator is smaller than the buffer size.
+        buffer_filled.set()
+
         item_queue.put(sentinel)
 
     # Start the background thread to read from the input and fill the queue.

@@ -4,13 +4,17 @@ Common functionality and types used in still images and in video.
 
 import logging
 from pathlib import Path
-from typing import cast
+from typing import List, Tuple, cast
 
 import cv2
 import numpy as np
-from PIL import Image
+from PIL import Image, ImageDraw
 
-from content_aware_timelapse.viderator.viderator_types import ImageResolution, RGBInt8ImageType
+from content_aware_timelapse.viderator.viderator_types import (
+    ImageResolution,
+    RGBInt8ImageType,
+    XYPoint,
+)
 
 LOGGER = logging.getLogger(__name__)
 
@@ -99,3 +103,32 @@ def resize_image_max_side(
         del image
 
     return output
+
+
+def draw_points_on_image(
+    points: List[XYPoint],
+    image: RGBInt8ImageType,
+    radius: int = 5,
+    color: Tuple[int, int, int] = (255, 0, 0),
+) -> RGBInt8ImageType:
+    """
+    Draws a list of points onto the input image for visualization.
+    :param points: To draw.
+    :param image: Image to draw on.
+    :param radius: Radius of point in pixels.
+    :param color: Color of point (R, G, B)
+    :return: Modified image.
+    """
+
+    pil_image = Image.fromarray(image)
+    draw = ImageDraw.Draw(pil_image)
+
+    for point in points:
+
+        x, y = point
+
+        bbox = [x - radius, y - radius, x + radius, y + radius]
+        draw.ellipse(bbox, fill=color, outline=color)
+
+    # Always return NumPy array
+    return RGBInt8ImageType(np.array(pil_image))

@@ -1,5 +1,13 @@
 # Changelog
 
+0.8.0 - (2025-09-??)
+------------------
+
+* Fixed bug in buffer where frames would not flow if the buffer was larger than the input frames.
+* Introduced `interesting_points` field to `IndexScores` to be able to find per-frame intersting
+points in service of auto-cropping.
+
+
 0.7.0 - (2025-09-07)
 ------------------
 

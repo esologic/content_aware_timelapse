@@ -24,3 +24,12 @@ class ImageResolution(NamedTuple):
 
     width: int
     height: int
+
+
+class XYPoint(NamedTuple):
+    """
+    Standard NT for pixel locations. (0, 0) is in the top left corner of the image.
+    """
+
+    x: int
+    y: int

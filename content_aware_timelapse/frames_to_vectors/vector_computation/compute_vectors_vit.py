@@ -24,8 +24,13 @@ from content_aware_timelapse.frames_to_vectors.conversion_types import (
     ConversionScoringFunctions,
     IndexScores,
     ScoreWeights,
+    XYPoint,
 )
-from content_aware_timelapse.viderator.viderator_types import PILImage, RGBInt8ImageType
+from content_aware_timelapse.viderator.viderator_types import (
+    ImageResolution,
+    PILImage,
+    RGBInt8ImageType,
+)
 
 LOGGER = logging.getLogger(__name__)
 
@@ -236,7 +241,10 @@ def _compute_vectors_vit(
                 summary_tracker.print_diff()  # type:ignore[no-untyped-call]
 
 
-def _calculate_scores_vit_cls(packed: Tuple[int, npt.NDArray[np.float16]]) -> IndexScores:
+def _calculate_scores_vit_cls(  # pylint: disable=unused-argument
+    packed: Tuple[int, npt.NDArray[np.float16]],
+    original_source_resolution: ImageResolution,
+) -> IndexScores:
     """
     Calculate scores from the CLS token embedding of an image.
 
@@ -251,6 +259,7 @@ def _calculate_scores_vit_cls(packed: Tuple[int, npt.NDArray[np.float16]]) -> In
                    Its interpretation for 'interestingness' is less direct for feature vectors
                    compared to spatial attention maps, but can indicate feature sparsity/density.
 
+    :param original_source_resolution: Not consumed here but provided by the API.
     :param packed: Tuple of the image's index and its CLS token embedding.
     :return: Calculated scores and index.
     """
@@ -292,10 +301,42 @@ def _calculate_scores_vit_cls(packed: Tuple[int, npt.NDArray[np.float16]]) -> In
         variance=float(variance_score),
         saliency=float(saliency_score),
         energy=float(energy_score),
+        interesting_points=[],
     )
 
 
-def _calculate_scores_vit_attention(packed: Tuple[int, npt.NDArray[np.float16]]) -> IndexScores:
+def _map_output_to_source(
+    x_out: int, y_out: int, orig_size: Tuple[int, int], side_length: int
+) -> XYPoint:
+    """
+
+    :param x_out:
+    :param y_out:
+    :param orig_size:
+    :param side_length:
+    :return:
+    """
+    orig_w, orig_h = orig_size
+    scale = min(side_length / orig_w, side_length / orig_h)
+    pad_x = (side_length - round(orig_w * scale)) // 2
+    pad_y = (side_length - round(orig_h * scale)) // 2
+
+    x_src = (x_out - pad_x) / scale
+    y_src = (y_out - pad_y) / scale
+
+    # Clamp to valid coordinates
+    x_src = int(round(x_src))
+    y_src = int(round(y_src))
+    x_src = max(0, min(x_src, orig_w - 1))
+    y_src = max(0, min(y_src, orig_h - 1))
+
+    return XYPoint(x_src, y_src)
+
+
+def _calculate_scores_vit_attention(
+    packed: Tuple[int, npt.NDArray[np.float16]],
+    original_source_resolution: ImageResolution,
+) -> IndexScores:
     """
     Calculate scores from the attention map(s) of an image.
 
@@ -338,6 +379,14 @@ def _calculate_scores_vit_attention(packed: Tuple[int, npt.NDArray[np.float16]])
         variance=float(variance_score),
         saliency=float(saliency_score),
         energy=float(energy_score),
+        interesting_points=[
+            _map_output_to_source(
+                x_out=VIT_SIDE_LENGTH // 2,
+                y_out=VIT_SIDE_LENGTH // 2,
+                orig_size=original_source_resolution,
+                side_length=224,
+            )
+        ],
     )
 
 
