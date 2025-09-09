@@ -336,27 +336,23 @@ def _map_output_to_source(
 def _calculate_scores_vit_attention(  # pylint: disable=too-many-locals
     packed: Tuple[int, npt.NDArray[np.float16]],
     original_source_resolution: ImageResolution,
-    top_k: int = 30,
+    num_interesting_points: int = 10,
+    edge_patch_margin: int = 3,  # number of patch rows/cols to skip around the edges
 ) -> IndexScores:
     """
-    Calculate attention-based scalar scores + top-K interesting points on the source image.
+    Calculate attention-based scalar scores + top-K interesting points, excluding edge patches.
 
-    Uses self-attention between patches to select points that move between frames.
-    CLS token is ignored when computing per-patch scores.
-
-    :param packed: Tuple of (frame_index, attention_map).
-                   attention_map shape: (H, 197, 197) or (197, 197)
+    :param packed: Tuple of (frame_index, attention_map). Shape: (H,197,197) or (197,197)
     :param original_source_resolution: Width/height of original image (before ViT resize/pad)
-    :param top_k: Number of interesting points to extract
+    :param num_interesting_points: Number of interesting points to extract
+    :param edge_patch_margin: Number of patch rows/columns to exclude at each image border
     :return: IndexScores with scalar metrics and interesting_points
     """
     index, attention_map = packed
-
-    # Convert to float32
     attention_map = np.asarray(attention_map).astype(np.float32)
 
     # Average over heads if needed
-    if attention_map.ndim == 3:  # (H, 197, 197)
+    if attention_map.ndim == 3:  # (H,197,197)
         attention_map = attention_map.mean(axis=0)  # (197,197)
 
     # --- Scalar metrics ---
@@ -373,30 +369,43 @@ def _calculate_scores_vit_attention(  # pylint: disable=too-many-locals
     # --- Compute per-patch scores (exclude CLS token) ---
     patch_attn = attention_map[1:, 1:]  # shape: (196,196)
     num_patches = patch_attn.shape[0]
+    patch_scores = patch_attn.sum(axis=0)
 
-    # Sum of attention received by each patch
-    patch_scores = patch_attn.sum(axis=0)  # or axis=1; can experiment
-
-    # Select top-K
-    k = min(top_k, num_patches)
+    # --- Select top-K, excluding edge patches ---
+    points_to_select = min(num_interesting_points, num_patches)
     interesting_points: List[XYPoint] = []
-    if k > 0:
-        top_indices = np.argsort(patch_scores)[-k:][::-1]
-        grid_w = grid_h = int(np.sqrt(num_patches))  # 14x14 for 196 patches
+
+    if points_to_select > 0:
+        grid_size = int(np.sqrt(num_patches))  # 14x14 for 196 patches
+        top_indices = np.argsort(patch_scores)[::-1]  # sort descending
+
         for idx in top_indices:
-            gx, gy = idx % grid_w, idx // grid_w
-            # Map to ViT side length coordinates
-            x_vit = (gx + 0.5) * (VIT_SIDE_LENGTH / grid_w)
-            y_vit = (gy + 0.5) * (VIT_SIDE_LENGTH / grid_h)
-            # Map to original source image coordinates
-            interesting_points.append(
-                _map_output_to_source(
-                    x_out=int(round(x_vit)),
-                    y_out=int(round(y_vit)),
-                    orig_size=(original_source_resolution.width, original_source_resolution.height),
-                    side_length=VIT_SIDE_LENGTH,
-                )
+            gx, gy = idx % grid_size, idx // grid_size
+
+            # Skip patches within edge margin
+            if (
+                gx < edge_patch_margin
+                or gx >= grid_size - edge_patch_margin
+                or gy < edge_patch_margin
+                or gy >= grid_size - edge_patch_margin
+            ):
+                continue
+
+            # Map to ViT grid
+            x_vit = (gx + 0.5) * (VIT_SIDE_LENGTH / grid_size)
+            y_vit = (gy + 0.5) * (VIT_SIDE_LENGTH / grid_size)
+
+            # Map to original image
+            pt = _map_output_to_source(
+                x_out=int(round(x_vit)),
+                y_out=int(round(y_vit)),
+                orig_size=(original_source_resolution.width, original_source_resolution.height),
+                side_length=VIT_SIDE_LENGTH,
             )
+
+            interesting_points.append(pt)
+            if len(interesting_points) >= points_to_select:
+                break
 
     return IndexScores(
         frame_index=int(index),
