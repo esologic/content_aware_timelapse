@@ -333,60 +333,78 @@ def _map_output_to_source(
     return XYPoint(x_src, y_src)
 
 
-def _calculate_scores_vit_attention(
+def _calculate_scores_vit_attention(  # pylint: disable=too-many-locals
     packed: Tuple[int, npt.NDArray[np.float16]],
     original_source_resolution: ImageResolution,
+    top_k: int = 30,
 ) -> IndexScores:
     """
-    Calculate scores from the attention map(s) of an image.
+    Calculate attention-based scalar scores + top-K interesting points on the source image.
 
-    Metrics are reinterpreted for attention maps:
-        - Energy: Frobenius norm of the attention maps, indicating overall strength.
-        - Saliency: 90th percentile of attention weights, highlighting strongest focus.
-        - Variance: Spread of attention values; high = sparse focus, low = diffuse.
-        - Entropy: Normalized entropy of attention distribution;
-                   low = focused, high = diffuse.
+    Uses self-attention between patches to select points that move between frames.
+    CLS token is ignored when computing per-patch scores.
 
     :param packed: Tuple of (frame_index, attention_map).
-                   attention_map may be (layers, heads, seq_len, seq_len)
-                   or already reduced. All dims are flattened here.
-    :return: IndexScores with scalar metrics for the frame.
+                   attention_map shape: (H, 197, 197) or (197, 197)
+    :param original_source_resolution: Width/height of original image (before ViT resize/pad)
+    :param top_k: Number of interesting points to extract
+    :return: IndexScores with scalar metrics and interesting_points
     """
     index, attention_map = packed
 
-    # Flatten across all dimensions
-    map_as_float = attention_map.astype(np.float32).ravel()
+    # Convert to float32
+    attention_map = np.asarray(attention_map).astype(np.float32)
 
-    # Energy: Frobenius norm (total activation strength)
-    energy_score = np.linalg.norm(map_as_float)
+    # Average over heads if needed
+    if attention_map.ndim == 3:  # (H, 197, 197)
+        attention_map = attention_map.mean(axis=0)  # (197,197)
 
-    # Saliency: 90th percentile (strongest attention weight)
-    saliency_score = np.percentile(map_as_float, 90)
-
-    # Variance: spread of attention values
-    variance_score = np.var(map_as_float)
-
-    # Entropy: treat as probability distribution
-    if map_as_float.size > 0:
-        probs = map_as_float / (np.sum(map_as_float) + 1e-8)
-        entropy_score = -np.sum(probs * np.log(probs + 1e-8))
+    # --- Scalar metrics ---
+    flat = attention_map.ravel()
+    energy = float(np.linalg.norm(flat))
+    saliency = float(np.percentile(flat, 90))
+    variance = float(np.var(flat))
+    if flat.size > 0:
+        probs = flat / (flat.sum() + 1e-8)
+        entropy = float(-np.sum(probs * np.log(probs + 1e-8)))
     else:
-        entropy_score = 0.0
+        entropy = 0.0
+
+    # --- Compute per-patch scores (exclude CLS token) ---
+    patch_attn = attention_map[1:, 1:]  # shape: (196,196)
+    num_patches = patch_attn.shape[0]
+
+    # Sum of attention received by each patch
+    patch_scores = patch_attn.sum(axis=0)  # or axis=1; can experiment
+
+    # Select top-K
+    k = min(top_k, num_patches)
+    interesting_points: List[XYPoint] = []
+    if k > 0:
+        top_indices = np.argsort(patch_scores)[-k:][::-1]
+        grid_w = grid_h = int(np.sqrt(num_patches))  # 14x14 for 196 patches
+        for idx in top_indices:
+            gx, gy = idx % grid_w, idx // grid_w
+            # Map to ViT side length coordinates
+            x_vit = (gx + 0.5) * (VIT_SIDE_LENGTH / grid_w)
+            y_vit = (gy + 0.5) * (VIT_SIDE_LENGTH / grid_h)
+            # Map to original source image coordinates
+            interesting_points.append(
+                _map_output_to_source(
+                    x_out=int(round(x_vit)),
+                    y_out=int(round(y_vit)),
+                    orig_size=(original_source_resolution.width, original_source_resolution.height),
+                    side_length=VIT_SIDE_LENGTH,
+                )
+            )
 
     return IndexScores(
-        frame_index=index,
-        entropy=float(entropy_score),
-        variance=float(variance_score),
-        saliency=float(saliency_score),
-        energy=float(energy_score),
-        interesting_points=[
-            _map_output_to_source(
-                x_out=VIT_SIDE_LENGTH // 2,
-                y_out=VIT_SIDE_LENGTH // 2,
-                orig_size=original_source_resolution,
-                side_length=224,
-            )
-        ],
+        frame_index=int(index),
+        entropy=entropy,
+        variance=variance,
+        saliency=saliency,
+        energy=energy,
+        interesting_points=interesting_points,
     )
 
 

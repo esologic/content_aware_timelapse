@@ -91,7 +91,6 @@ def test_sorting_converted_vectors(
     assert indices == list(sorted(indices, reverse=True))
 
 
-@pytest.mark.skip()
 @pytest.mark.parametrize(
     "conversion_scoring_functions",
     [
@@ -101,8 +100,6 @@ def test_sorting_converted_vectors(
 def test_interesting_patches(conversion_scoring_functions: ConversionScoringFunctions) -> None:
     """
     Sanity check using library assets to assume that scoring and sorting images works as expected.
-    :param frames: Should be sorted in order of interesting-ness, with the most interesting frame
-    first.
     :return: None
     """
 
