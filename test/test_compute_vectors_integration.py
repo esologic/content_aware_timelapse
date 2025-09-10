@@ -13,21 +13,25 @@ from test.assets import (
     SORTED_STREAM_GENERIC_PATHS,
     SORTED_STREAM_SOFTWARE_PATHS,
 )
-from typing import Iterator, List
+from typing import List
 
 import more_itertools
 import pytest
 
 import content_aware_timelapse.frames_to_vectors.conversion
 import content_aware_timelapse.frames_to_vectors.vector_computation.compute_vectors_vit
+from content_aware_timelapse import cat_pipeline
+from content_aware_timelapse.cat_pipeline import PointFrameCount
 from content_aware_timelapse.frames_to_vectors import vector_scoring
 from content_aware_timelapse.frames_to_vectors.conversion_types import (
     ConversionScoringFunctions,
+    IndexPointsOfInterest,
     IndexScores,
 )
 from content_aware_timelapse.frames_to_vectors.vector_computation.compute_vectors_vit import (
-    CONVERT_VIT_ATTENTION,
-    CONVERT_VIT_CLS,
+    CONVERT_POIS_VIT_ATTENTION,
+    CONVERT_SCORE_VIT_ATTENTION,
+    CONVERT_SCORE_VIT_CLS,
 )
 from content_aware_timelapse.viderator import frames_in_video, image_common, video_common
 from content_aware_timelapse.viderator.viderator_types import ImageSourceType
@@ -37,8 +41,8 @@ from content_aware_timelapse.viderator.viderator_types import ImageSourceType
     "conversion_scoring_functions",
     [
         # CONVERT_CLIP, # CLIP doesn't totally work as expected yet...
-        CONVERT_VIT_CLS,
-        CONVERT_VIT_ATTENTION,
+        CONVERT_SCORE_VIT_CLS,
+        CONVERT_SCORE_VIT_ATTENTION,
     ],
 )
 @pytest.mark.parametrize(
@@ -73,10 +77,7 @@ def test_sorting_converted_vectors(
 
     score_indexes: List[IndexScores] = list(
         map(
-            partial(
-                conversion_scoring_functions.scoring,
-                original_source_resolution=image_common.image_resolution(next(iter(frames))),
-            ),
+            conversion_scoring_functions.scoring,
             enumerate(vectors),
         )
     )
@@ -91,13 +92,7 @@ def test_sorting_converted_vectors(
     assert indices == list(sorted(indices, reverse=True))
 
 
-@pytest.mark.parametrize(
-    "conversion_scoring_functions",
-    [
-        CONVERT_VIT_ATTENTION,
-    ],
-)
-def test_interesting_patches(conversion_scoring_functions: ConversionScoringFunctions) -> None:
+def test_points_of_interest() -> None:
     """
     Sanity check using library assets to assume that scoring and sorting images works as expected.
     :return: None
@@ -112,21 +107,36 @@ def test_interesting_patches(conversion_scoring_functions: ConversionScoringFunc
         input_signature="test signature",
         batch_size=1,
         total_input_frames=1,
-        convert_batches=conversion_scoring_functions.conversion,
+        convert_batches=CONVERT_POIS_VIT_ATTENTION.conversion,
         intermediate_path=None,
     )
 
-    score_indexes: Iterator[IndexScores] = map(
-        partial(
-            conversion_scoring_functions.scoring,
-            original_source_resolution=video_frames.original_resolution,
-        ),
-        enumerate(vectors),
+    points_of_interest: List[IndexPointsOfInterest] = list(
+        map(
+            partial(
+                CONVERT_POIS_VIT_ATTENTION.compute_pois,
+                original_source_resolution=video_frames.original_resolution,
+            ),
+            enumerate(vectors),
+        )
     )
 
+    winning_points_and_counts: List[PointFrameCount] = (
+        cat_pipeline.count_frames_filter_dynamic_points(
+            points_of_interest=points_of_interest,
+            total_frame_count=video_frames.total_frame_count,
+            threshold=0.7,
+        )
+    )
+
+    points_only = {points_and_counts.point for points_and_counts in winning_points_and_counts}
+
     viz_frames_frames = (
-        image_common.draw_points_on_image(score["interesting_points"], frame)
-        for score, frame in zip(score_indexes, drawing_frames)
+        image_common.draw_points_on_image(
+            points=[point for point in score["points_of_interest"] if point in points_only],
+            image=frame,
+        )
+        for score, frame in zip(points_of_interest, drawing_frames)
     )
 
     more_itertools.consume(

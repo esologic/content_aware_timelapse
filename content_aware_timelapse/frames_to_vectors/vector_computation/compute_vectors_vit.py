@@ -21,7 +21,9 @@ from torch.nn.modules.dropout import Dropout
 from torchvision import transforms
 
 from content_aware_timelapse.frames_to_vectors.conversion_types import (
+    ConversionPOIsFunctions,
     ConversionScoringFunctions,
+    IndexPointsOfInterest,
     IndexScores,
     ScoreWeights,
     XYPoint,
@@ -241,10 +243,7 @@ def _compute_vectors_vit(
                 summary_tracker.print_diff()  # type:ignore[no-untyped-call]
 
 
-def _calculate_scores_vit_cls(  # pylint: disable=unused-argument
-    packed: Tuple[int, npt.NDArray[np.float16]],
-    original_source_resolution: ImageResolution,
-) -> IndexScores:
+def _calculate_scores_vit_cls(packed: Tuple[int, npt.NDArray[np.float16]]) -> IndexScores:
     """
     Calculate scores from the CLS token embedding of an image.
 
@@ -259,7 +258,6 @@ def _calculate_scores_vit_cls(  # pylint: disable=unused-argument
                    Its interpretation for 'interestingness' is less direct for feature vectors
                    compared to spatial attention maps, but can indicate feature sparsity/density.
 
-    :param original_source_resolution: Not consumed here but provided by the API.
     :param packed: Tuple of the image's index and its CLS token embedding.
     :return: Calculated scores and index.
     """
@@ -301,7 +299,6 @@ def _calculate_scores_vit_cls(  # pylint: disable=unused-argument
         variance=float(variance_score),
         saliency=float(saliency_score),
         energy=float(energy_score),
-        interesting_points=[],
     )
 
 
@@ -333,12 +330,58 @@ def _map_output_to_source(
     return XYPoint(x_src, y_src)
 
 
-def _calculate_scores_vit_attention(  # pylint: disable=too-many-locals
+def _calculate_scores_vit_attention(packed: Tuple[int, npt.NDArray[np.float16]]) -> IndexScores:
+    """
+    Calculate scores from the attention map(s) of an image.
+
+    Metrics are reinterpreted for attention maps:
+        - Energy: Frobenius norm of the attention maps, indicating overall strength.
+        - Saliency: 90th percentile of attention weights, highlighting strongest focus.
+        - Variance: Spread of attention values; high = sparse focus, low = diffuse.
+        - Entropy: Normalized entropy of attention distribution;
+                   low = focused, high = diffuse.
+
+    :param packed: Tuple of (frame_index, attention_map).
+                   attention_map may be (layers, heads, seq_len, seq_len)
+                   or already reduced. All dims are flattened here.
+    :return: IndexScores with scalar metrics for the frame.
+    """
+    index, attention_map = packed
+
+    # Flatten across all dimensions
+    map_as_float = attention_map.astype(np.float32).ravel()
+
+    # Energy: Frobenius norm (total activation strength)
+    energy_score = np.linalg.norm(map_as_float)
+
+    # Saliency: 90th percentile (strongest attention weight)
+    saliency_score = np.percentile(map_as_float, 90)
+
+    # Variance: spread of attention values
+    variance_score = np.var(map_as_float)
+
+    # Entropy: treat as probability distribution
+    if map_as_float.size > 0:
+        probs = map_as_float / (np.sum(map_as_float) + 1e-8)
+        entropy_score = -np.sum(probs * np.log(probs + 1e-8))
+    else:
+        entropy_score = 0.0
+
+    return IndexScores(
+        frame_index=index,
+        entropy=float(entropy_score),
+        variance=float(variance_score),
+        saliency=float(saliency_score),
+        energy=float(energy_score),
+    )
+
+
+def _calculate_poi_vit_attention(  # pylint: disable=too-many-locals
     packed: Tuple[int, npt.NDArray[np.float16]],
     original_source_resolution: ImageResolution,
-    num_interesting_points: int = 10,
-    edge_patch_margin: int = 3,  # number of patch rows/cols to skip around the edges
-) -> IndexScores:
+    num_interesting_points: int = 30,
+    edge_patch_margin: int = 1,  # number of patch rows/cols to skip around the edges
+) -> IndexPointsOfInterest:
     """
     Calculate attention-based scalar scores + top-K interesting points, excluding edge patches.
 
@@ -346,7 +389,7 @@ def _calculate_scores_vit_attention(  # pylint: disable=too-many-locals
     :param original_source_resolution: Width/height of original image (before ViT resize/pad)
     :param num_interesting_points: Number of interesting points to extract
     :param edge_patch_margin: Number of patch rows/columns to exclude at each image border
-    :return: IndexScores with scalar metrics and interesting_points
+    :return: IndexScores with scalar metrics and points_of_interest
     """
     index, attention_map = packed
     attention_map = np.asarray(attention_map).astype(np.float32)
@@ -355,25 +398,14 @@ def _calculate_scores_vit_attention(  # pylint: disable=too-many-locals
     if attention_map.ndim == 3:  # (H,197,197)
         attention_map = attention_map.mean(axis=0)  # (197,197)
 
-    # --- Scalar metrics ---
-    flat = attention_map.ravel()
-    energy = float(np.linalg.norm(flat))
-    saliency = float(np.percentile(flat, 90))
-    variance = float(np.var(flat))
-    if flat.size > 0:
-        probs = flat / (flat.sum() + 1e-8)
-        entropy = float(-np.sum(probs * np.log(probs + 1e-8)))
-    else:
-        entropy = 0.0
-
-    # --- Compute per-patch scores (exclude CLS token) ---
-    patch_attn = attention_map[1:, 1:]  # shape: (196,196)
+    # Compute per-patch scores (exclude CLS token)
+    patch_attn = attention_map[1:, 1:]  # shape: (196, 196)
     num_patches = patch_attn.shape[0]
     patch_scores = patch_attn.sum(axis=0)
 
-    # --- Select top-K, excluding edge patches ---
+    # Select top points, excluding edge patches
     points_to_select = min(num_interesting_points, num_patches)
-    interesting_points: List[XYPoint] = []
+    points_of_interest: List[XYPoint] = []
 
     if points_to_select > 0:
         grid_size = int(np.sqrt(num_patches))  # 14x14 for 196 patches
@@ -403,21 +435,17 @@ def _calculate_scores_vit_attention(  # pylint: disable=too-many-locals
                 side_length=VIT_SIDE_LENGTH,
             )
 
-            interesting_points.append(pt)
-            if len(interesting_points) >= points_to_select:
+            points_of_interest.append(pt)
+            if len(points_of_interest) >= points_to_select:
                 break
 
-    return IndexScores(
+    return IndexPointsOfInterest(
         frame_index=int(index),
-        entropy=entropy,
-        variance=variance,
-        saliency=saliency,
-        energy=energy,
-        interesting_points=interesting_points,
+        points_of_interest=points_of_interest,
     )
 
 
-CONVERT_VIT_CLS = ConversionScoringFunctions(
+CONVERT_SCORE_VIT_CLS = ConversionScoringFunctions(
     name="vit_cls_token",
     conversion=partial(_compute_vectors_vit, VITOutputMode.CLS_TOKEN),
     scoring=_calculate_scores_vit_cls,
@@ -425,10 +453,17 @@ CONVERT_VIT_CLS = ConversionScoringFunctions(
     max_side_length=VIT_SIDE_LENGTH,
 )
 
-CONVERT_VIT_ATTENTION = ConversionScoringFunctions(
+CONVERT_SCORE_VIT_ATTENTION = ConversionScoringFunctions(
     name="vit_attention_map",
     conversion=partial(_compute_vectors_vit, VITOutputMode.ATTENTION_MAP),
     scoring=_calculate_scores_vit_attention,
     weights=ScoreWeights(low_entropy=0.4, variance=0.1, saliency=0.4, energy=0.2),
+    max_side_length=VIT_SIDE_LENGTH,
+)
+
+CONVERT_POIS_VIT_ATTENTION = ConversionPOIsFunctions(
+    name="vit_attention_map",
+    conversion=partial(_compute_vectors_vit, VITOutputMode.ATTENTION_MAP),
+    compute_pois=_calculate_poi_vit_attention,
     max_side_length=VIT_SIDE_LENGTH,
 )

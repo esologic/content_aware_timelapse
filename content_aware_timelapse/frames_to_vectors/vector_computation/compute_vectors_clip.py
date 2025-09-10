@@ -18,7 +18,7 @@ from content_aware_timelapse.frames_to_vectors.conversion_types import (
     IndexScores,
     ScoreWeights,
 )
-from content_aware_timelapse.viderator.viderator_types import ImageResolution, RGBInt8ImageType
+from content_aware_timelapse.viderator.viderator_types import RGBInt8ImageType
 
 LOGGER = logging.getLogger(__name__)
 
@@ -106,9 +106,7 @@ def _compute_vectors_clip(
             yield from images_to_feature_vectors(batch, e)
 
 
-def _calculate_scores_clip(  # pylint: disable=unused-argument
-    packed: Tuple[int, npt.NDArray[np.float16]], original_source_resolution: ImageResolution
-) -> IndexScores:
+def _calculate_scores_clip(packed: Tuple[int, npt.NDArray[np.float16]]) -> IndexScores:
     """
     Calculate a combined score from various metrics of the CLIP embedding.
 
@@ -119,7 +117,6 @@ def _calculate_scores_clip(  # pylint: disable=unused-argument
         - Energy: Measures total embedding magnitude (L2 norm).
 
     :param packed: Tuple of the index and the CLIP embedding vector.
-    :param original_source_resolution: Provided by API, not consumed here yet.
     :return: Combined score and index.
     """
 
@@ -139,7 +136,6 @@ def _calculate_scores_clip(  # pylint: disable=unused-argument
         variance=float(np.var(embedding)),
         saliency=float(np.max(embedding)),
         energy=float(np.linalg.norm(embedding)),
-        interesting_points=[],
     )
 
 

@@ -16,8 +16,7 @@ from content_aware_timelapse.viderator.viderator_types import (
 
 class IndexScores(TypedDict):
     """
-    Intermediate type for linking the Euclidean distance between the next frame and the index
-    of the frame.
+    Links the frame index of the input with a set of overall scores that describe the whole frame
     """
 
     frame_index: int
@@ -25,7 +24,6 @@ class IndexScores(TypedDict):
     variance: float
     saliency: float
     energy: float
-    interesting_points: List[XYPoint]
 
 
 class ConvertBatchesFunction(Protocol):
@@ -48,16 +46,10 @@ class ScoreVectorsFunction(Protocol):
     Describes functions that convert vectors to numerical properties of the vectors.
     """
 
-    def __call__(
-        self,
-        packed: Tuple[int, npt.NDArray[np.float16]],
-        original_source_resolution: ImageResolution,
-    ) -> IndexScores:
+    def __call__(self, packed: Tuple[int, npt.NDArray[np.float16]]) -> IndexScores:
         """
         :param packed: A tuple, the index of the frame in the input and the calculated vectors
         for that frame.
-        :param original_source_resolution: Consumed in the `interesting_points` field of the output,
-        the original source resolution of the input frames as they exist pre-processing.
         :return: An IndexScores, which are the numerical properties of the vectors.
         """
 
@@ -85,6 +77,51 @@ class ConversionScoringFunctions(NamedTuple):
     conversion: ConvertBatchesFunction
     scoring: ScoreVectorsFunction
     weights: ScoreWeights
+    max_side_length: Optional[int] = None
+    """
+    Allows pre-processing steps to shrink the input images to the exact side length, or nearby
+    to decrease overall memory pressure, or pack more frames into memory before being processed.
+    """
+
+
+class IndexPointsOfInterest(TypedDict):
+    """
+    Links the frame index of the input with a list of points of interest within the image.
+    This is consumed in auto-cropping to find the best region of the video.
+    """
+
+    frame_index: int
+    points_of_interest: List[XYPoint]
+
+
+class ScorePOIsFunction(Protocol):
+    """
+    Describes functions that convert vectors to numerical properties of the vectors.
+    """
+
+    def __call__(
+        self,
+        packed: Tuple[int, npt.NDArray[np.float16]],
+        original_source_resolution: ImageResolution,
+    ) -> IndexPointsOfInterest:
+        """
+        :param packed: A tuple, the index of the frame in the input and the calculated vectors
+        for that frame.
+        :param original_source_resolution: Consumed in the `interesting_points` field of the output,
+        the original source resolution of the input frames as they exist pre-processing.
+        :return: An IndexScores, which are the numerical properties of the vectors.
+        """
+
+
+class ConversionPOIsFunctions(NamedTuple):
+    """
+    Similar to `ConversionScoringFunctions`, links the function that generates tensor
+    with a function that creates the POIs.
+    """
+
+    name: str
+    conversion: ConvertBatchesFunction
+    compute_pois: ScorePOIsFunction
     max_side_length: Optional[int] = None
     """
     Allows pre-processing steps to shrink the input images to the exact side length, or nearby

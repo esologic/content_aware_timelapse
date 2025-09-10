@@ -105,7 +105,6 @@ def _score_and_sort_frames(
         )
 
     raw_df = pd.DataFrame.from_records(index_scores).set_index("frame_index")
-    raw_df = raw_df.drop("interesting_points", axis=1)
 
     # Normalize the score columns
     scaler = preprocessing.MinMaxScaler()

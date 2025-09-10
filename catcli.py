@@ -15,8 +15,9 @@ from content_aware_timelapse.frames_to_vectors.vector_computation.compute_vector
     CONVERT_CLIP,
 )
 from content_aware_timelapse.frames_to_vectors.vector_computation.compute_vectors_vit import (
-    CONVERT_VIT_ATTENTION,
-    CONVERT_VIT_CLS,
+    CONVERT_POIS_VIT_ATTENTION,
+    CONVERT_SCORE_VIT_ATTENTION,
+    CONVERT_SCORE_VIT_CLS,
 )
 from content_aware_timelapse.viderator import video_common
 
@@ -32,7 +33,7 @@ logging.basicConfig(
 LOGGER = logging.getLogger(__name__)
 
 
-class VectorBackend(str, Enum):
+class VectorBackendScores(str, Enum):
     """
     For the CLI, string representations of the different vectorization backends.
     """
@@ -40,6 +41,14 @@ class VectorBackend(str, Enum):
     vit_cls = "vit-cls"
     vit_attention = "vit-attention"
     clip = "clip"
+
+
+class VectorBackendPOIs(str, Enum):
+    """
+    For the CLI, string representations of the different Point of Interest backends.
+    """
+
+    vit_attention = "vit-attention"
 
 
 input_files_arg = click.option(
@@ -80,6 +89,51 @@ output_fps_arg = click.option(
     show_default=True,
 )
 
+# Content-aware parameters
+
+batch_size_arg = click.option(
+    "--batch-size",
+    "-b",
+    type=click.IntRange(min=1),
+    help="Frames are sent to GPU for processing in batches of this size.",
+    required=True,
+    default=600,
+    show_default=True,
+)
+
+buffer_size_arg = click.option(
+    "--buffer-size",
+    "-b",
+    type=click.IntRange(min=0),
+    help=(
+        "The number of frames to load into an in-memory buffer. "
+        "This makes sure the GPUs have fast access to more frames rather than have the GPU "
+        "waiting on disk/network IO."
+    ),
+    required=False,
+    default=0,
+    show_default=True,
+)
+
+
+viz_path_arg = click.option(
+    "--viz-path",
+    "-z",
+    type=click.Path(file_okay=True, dir_okay=False, writable=True, path_type=Path),
+    help=(
+        "A visualisation describing the timelapse creation "
+        "process will be written to this path if given"
+    ),
+    required=False,
+)
+
+
+_CONVERSION_SCORING_FUNCTIONS_LOOKUP = {
+    VectorBackendScores.vit_cls: CONVERT_SCORE_VIT_CLS,
+    VectorBackendScores.vit_attention: CONVERT_SCORE_VIT_ATTENTION,
+    VectorBackendScores.clip: CONVERT_CLIP,
+}
+
 
 @click.group()
 def cli() -> None:
@@ -97,33 +151,13 @@ def cli() -> None:
 @output_path_arg
 @duration_arg
 @output_fps_arg
-@click.option(
-    "--batch-size",
-    "-b",
-    type=click.IntRange(min=1),
-    help="Frames are sent to GPU for processing in batches of this size.",
-    required=True,
-    default=600,
-    show_default=True,
-)
-@click.option(
-    "--buffer-size",
-    "-b",
-    type=click.IntRange(min=0),
-    help=(
-        "The number of frames to load into an in-memory buffer. "
-        "This makes sure the GPUs have fast access to more frames rather than have the GPU "
-        "waiting on disk/network IO."
-    ),
-    required=False,
-    default=None,
-    show_default=True,
-)
+@batch_size_arg
+@buffer_size_arg
 @create_enum_option(
     arg_flag="--backend",
     help_message="Sets which vectorization backend is used.",
-    default=VectorBackend.vit_cls,
-    input_enum=VectorBackend,
+    default=VectorBackendScores.vit_cls,
+    input_enum=VectorBackendScores,
 )
 @click.option(
     "--vectors-path",
@@ -132,16 +166,7 @@ def cli() -> None:
     help="Intermediate vectors will be written to this path. Can be used to re-run.",
     required=False,
 )
-@click.option(
-    "--viz-path",
-    "-z",
-    type=click.Path(file_okay=True, dir_okay=False, writable=True, path_type=Path),
-    help=(
-        "A visualisation describing the timelapse creation "
-        "process will be written to this path if given"
-    ),
-    required=False,
-)
+@viz_path_arg
 def content(  # pylint: disable=too-many-locals,too-many-positional-arguments
     input_files: List[Path],
     output_path: Path,
@@ -149,7 +174,7 @@ def content(  # pylint: disable=too-many-locals,too-many-positional-arguments
     output_fps: float,
     batch_size: int,
     buffer_size: Optional[int],
-    backend: VectorBackend,
+    backend: VectorBackendScores,
     vectors_path: Optional[Path],
     viz_path: Optional[Path],
 ) -> None:
@@ -171,21 +196,101 @@ def content(  # pylint: disable=too-many-locals,too-many-positional-arguments
     :return: None
     """
 
-    lookup = {
-        VectorBackend.vit_cls: CONVERT_VIT_CLS,
-        VectorBackend.vit_attention: CONVERT_VIT_ATTENTION,
-        VectorBackend.clip: CONVERT_CLIP,
-    }
-
-    cat_pipeline.create_timelapse(
+    cat_pipeline.create_uncropped_timelapse(
         input_files=input_files,
         output_path=output_path,
         duration=duration,
         output_fps=output_fps,
         batch_size=batch_size,
-        buffer_size=buffer_size if buffer_size is not None else batch_size,
-        conversion_scoring_functions=lookup[backend],
+        buffer_size=buffer_size,
+        conversion_scoring_functions=_CONVERSION_SCORING_FUNCTIONS_LOOKUP[backend],
         vectors_path=vectors_path,
+        plot_path=viz_path,
+    )
+
+
+_CONVERSION_POIS_FUNCTIONS_LOOKUP = {VectorBackendPOIs.vit_attention: CONVERT_POIS_VIT_ATTENTION}
+
+
+@cli.command(short_help="Adds content aware cropping at the cost of performance.")
+@input_files_arg
+@output_path_arg
+@duration_arg
+@output_fps_arg
+@batch_size_arg
+@buffer_size_arg
+@create_enum_option(
+    arg_flag="--backend-pois",
+    help_message="Sets which vectorization backend is used.",
+    default=VectorBackendPOIs.vit_attention,
+    input_enum=VectorBackendPOIs,
+)
+@create_enum_option(
+    arg_flag="--backend-scores",
+    help_message="Sets which vectorization backend is used.",
+    default=VectorBackendScores.vit_cls,
+    input_enum=VectorBackendScores,
+)
+@click.option(
+    "--vectors-path-pois",
+    "-vp",
+    type=click.Path(file_okay=True, dir_okay=False, writable=True, path_type=Path),
+    help="Intermediate vectors will be written to this path. Can be used to re-run.",
+    required=False,
+)
+@click.option(
+    "--vectors-path-scores",
+    "-vs",
+    type=click.Path(file_okay=True, dir_okay=False, writable=True, path_type=Path),
+    help="Intermediate vectors will be written to this path. Can be used to re-run.",
+    required=False,
+)
+@viz_path_arg
+def content_cropped(  # pylint: disable=too-many-locals,too-many-positional-arguments,too-many-arguments
+    input_files: List[Path],
+    output_path: Path,
+    duration: float,
+    output_fps: float,
+    batch_size: int,
+    buffer_size: Optional[int],
+    backend_pois: VectorBackendPOIs,
+    backend_scores: VectorBackendScores,
+    vectors_path_pois: Optional[Path],
+    vectors_path_scores: Optional[Path],
+    viz_path: Optional[Path],
+) -> None:
+    """
+    Create a timelapse based on the most interesting parts of a video rather than blindly
+    down-selecting frames. Adds cropping to a specific aspect ratio based on the contents of the
+    video.
+
+    \f
+
+    :param input_files: See click docs.
+    :param output_path: See click docs.
+    :param duration: See click docs.
+    :param output_fps: See click docs.
+    :param batch_size: See click docs.
+    :param buffer_size: See click docs.
+    :param backend_pois: See click docs.
+    :param backend_scores: See click docs.
+    :param vectors_path_pois: See click docs.
+    :param vectors_path_scores: See click docs.
+    :param viz_path: See click docs.
+    :return: None
+    """
+
+    cat_pipeline.create_cropped_timelapse(
+        input_files=input_files,
+        output_path=output_path,
+        duration=duration,
+        output_fps=output_fps,
+        batch_size=batch_size,
+        buffer_size=buffer_size,
+        conversion_pois_functions=_CONVERSION_POIS_FUNCTIONS_LOOKUP[backend_pois],
+        conversion_scoring_functions=_CONVERSION_SCORING_FUNCTIONS_LOOKUP[backend_scores],
+        pois_vectors_path=vectors_path_pois,
+        scores_vectors_path=vectors_path_scores,
         plot_path=viz_path,
     )
 

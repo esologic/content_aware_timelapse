@@ -6,24 +6,35 @@ import itertools
 import logging
 from functools import partial
 from pathlib import Path
-from typing import Iterator, List, NamedTuple, Optional, Set
+from typing import Iterator, List, NamedTuple, Optional, Set, Tuple
 
 import numpy as np
+import pandas as pd
 from numpy import typing as npt
 from tqdm import tqdm
 
-import content_aware_timelapse.frames_to_vectors.conversion
-import content_aware_timelapse.frames_to_vectors.vector_computation.compute_vectors_vit
 import content_aware_timelapse.viderator.frames_in_video
 from content_aware_timelapse.frames_to_vectors import vector_scoring
 from content_aware_timelapse.frames_to_vectors.conversion_types import (
+    ConversionPOIsFunctions,
     ConversionScoringFunctions,
+    IndexPointsOfInterest,
     IndexScores,
 )
 from content_aware_timelapse.vector_file import create_videos_signature
-from content_aware_timelapse.viderator import image_common, iterator_common, video_common
+from content_aware_timelapse.viderator import (
+    image_common,
+    iterator_common,
+    iterator_on_disk,
+    video_common,
+)
 from content_aware_timelapse.viderator.video_common import VideoFrames
-from content_aware_timelapse.viderator.viderator_types import ImageResolution, ImageSourceType
+from content_aware_timelapse.viderator.viderator_types import (
+    ImageResolution,
+    ImageSourceType,
+    RGBInt8ImageType,
+    XYPoint,
+)
 
 LOGGER = logging.getLogger(__name__)
 
@@ -79,7 +90,7 @@ def load_input_videos(input_files: List[Path]) -> _FramesCountResolution:
     )
 
 
-def create_timelapse(  # pylint: disable=too-many-locals,too-many-positional-arguments
+def create_uncropped_timelapse(  # pylint: disable=too-many-locals,too-many-positional-arguments
     input_files: List[Path],
     output_path: Path,
     duration: float,
@@ -157,10 +168,7 @@ def create_timelapse(  # pylint: disable=too-many-locals,too-many-positional-arg
 
     score_indexes: List[IndexScores] = list(
         map(
-            partial(
-                conversion_scoring_functions.scoring,
-                original_source_resolution=frames_count_resolution.original_resolution,
-            ),
+            conversion_scoring_functions.scoring,
             tqdm(
                 enumerate(vectors),
                 total=frames_count_resolution.total_frame_count,
@@ -209,3 +217,184 @@ def create_timelapse(  # pylint: disable=too-many-locals,too-many-positional-arg
         video_fps=output_fps,
         high_quality=True,
     )
+
+
+def video_multi_read(
+    input_files: List[Path], resize_side_length: Optional[int], buffer_size: int, copies: int
+) -> Tuple[Tuple[int, ImageResolution], Tuple[Iterator[RGBInt8ImageType], ...]]:
+    """
+
+    :param input_files:
+    :param resize_side_length:
+    :param buffer_size:
+    :param copies:
+    :return:
+    """
+
+    frames_count_resolution = load_input_videos(input_files=input_files)
+
+    frame_source = frames_count_resolution.frames
+
+    if resize_side_length is not None:
+        frame_source = map(
+            partial(
+                image_common.resize_image_max_side,
+                max_side_length=resize_side_length,
+                delete=True,
+            ),
+            frame_source,
+        )
+
+    output_iterators = iterator_on_disk.tee_disk_cache(
+        iterator=frame_source,
+        copies=copies,
+        serializer=iterator_on_disk.HDF5_SERIALIZER,
+    )
+
+    if buffer_size > 0:
+        output_iterators = tuple(
+            map(
+                lambda iterator: iterator_common.preload_into_memory(
+                    source=iterator, buffer_size=buffer_size, fill_buffer_before_yield=True
+                ),
+                output_iterators,
+            )
+        )
+
+    return (
+        frames_count_resolution.total_frame_count,
+        frames_count_resolution.original_resolution,
+    ), output_iterators
+
+
+class PointFrameCount(NamedTuple):
+    """
+    Dynamic point with its frequency across frames.
+    """
+
+    point: XYPoint
+    frame_count: int
+
+
+def count_frames_filter_dynamic_points(
+    points_of_interest: List[IndexPointsOfInterest], total_frame_count: int, threshold: float
+) -> List[PointFrameCount]:
+    """
+
+    :param points_of_interest:
+    :param total_frame_count:
+    :param threshold:
+    :return:
+    """
+
+    # Flatten to DataFrame
+    df = pd.DataFrame.from_records(
+        (
+            (pt.x, pt.y, frame["frame_index"])
+            for frame in points_of_interest
+            for pt in frame["points_of_interest"]
+        ),
+        columns=["x", "y", "frame_index"],
+    )
+
+    # Count in how many frames each (x, y) appears
+    frames_per_point = (
+        df.groupby(["x", "y"])["frame_index"].nunique().reset_index(name="frame_count")
+    )
+
+    # Keep only dynamic points
+    dynamic_points_df = frames_per_point[
+        (frames_per_point["frame_count"] / total_frame_count) < threshold
+    ]
+
+    # Convert to list of DynamicPoint
+    result: List[PointFrameCount] = [
+        PointFrameCount(XYPoint(row.x, row.y), int(row.frame_count))
+        for row in dynamic_points_df.itertuples(index=False)
+    ]
+
+    return result
+
+
+def create_cropped_timelapse(  # pylint: disable=too-many-locals,too-many-positional-arguments,too-many-arguments,unused-argument,unused-variable
+    input_files: List[Path],
+    output_path: Path,
+    duration: float,
+    output_fps: float,
+    batch_size: int,
+    buffer_size: int,
+    conversion_pois_functions: ConversionPOIsFunctions,
+    conversion_scoring_functions: ConversionScoringFunctions,
+    pois_vectors_path: Optional[Path],
+    scores_vectors_path: Optional[Path],
+    plot_path: Optional[Path],
+) -> None:
+    """
+
+    :param input_files:
+    :param output_path:
+    :param duration:
+    :param output_fps:
+    :param batch_size:
+    :param buffer_size:
+    :param conversion_pois_functions:
+    :param conversion_scoring_functions:
+    :param pois_vectors_path:
+    :param scores_vectors_path:
+    :param plot_path:
+    :return:
+    """
+
+    input_signature = create_videos_signature(video_paths=input_files)
+
+    side_lengths = [
+        conversion_scoring_functions.max_side_length,
+        conversion_pois_functions.max_side_length,
+    ]
+
+    if len(set(side_lengths)) > 1:
+        LOGGER.warning("Conversion functions have different intermediate side lengths.")
+
+    # These will be resized, so we can't use this for output.
+    (total_frame_count, original_source_resolution), (frames_for_pois, frames_for_scores) = (
+        video_multi_read(
+            input_files=input_files,
+            resize_side_length=max(side_lengths),
+            buffer_size=buffer_size,
+            copies=1,
+        )
+    )
+
+    vectors_for_pois: Iterator[npt.NDArray[np.float16]] = (
+        content_aware_timelapse.frames_to_vectors.conversion.frames_to_vectors(
+            frames=frames_for_pois,
+            intermediate_path=pois_vectors_path,
+            input_signature=input_signature,
+            batch_size=batch_size,
+            total_input_frames=total_frame_count,
+            convert_batches=conversion_pois_functions.conversion,
+        )
+    )
+
+    points_of_interest: List[IndexPointsOfInterest] = list(
+        map(
+            partial(
+                conversion_pois_functions.compute_pois,
+                original_source_resolution=original_source_resolution,
+            ),
+            tqdm(
+                enumerate(vectors_for_pois),
+                total=total_frame_count,
+                unit="Frames",
+                ncols=100,
+                desc="Scoring Images",
+                maxinterval=1,
+            ),
+        )
+    )
+
+    winning_points: List[PointFrameCount] = count_frames_filter_dynamic_points(
+        points_of_interest=points_of_interest, total_frame_count=total_frame_count, threshold=0.7
+    )
+
+    print("stop")
