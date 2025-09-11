@@ -34,6 +34,8 @@ from content_aware_timelapse.viderator.viderator_types import (
     ImageSourceType,
     RGBInt8ImageType,
     XYPoint,
+    AspectRatio,
+    SquareRegion,
 )
 
 LOGGER = logging.getLogger(__name__)
@@ -276,14 +278,17 @@ class PointFrameCount(NamedTuple):
     frame_count: int
 
 
-def count_frames_filter_dynamic_points(
-    points_of_interest: List[IndexPointsOfInterest], total_frame_count: int, threshold: float
+def count_frames_filter(
+    points_of_interest: List[IndexPointsOfInterest],
+    total_frame_count: int,
+    drop_frame_threshold: float,
 ) -> List[PointFrameCount]:
     """
 
     :param points_of_interest:
     :param total_frame_count:
-    :param threshold:
+    :param drop_frame_threshold: Drop points that appear in more than this percent of frames.
+    Float from 0-1
     :return:
     """
 
@@ -304,7 +309,7 @@ def count_frames_filter_dynamic_points(
 
     # Keep only dynamic points
     dynamic_points_df = frames_per_point[
-        (frames_per_point["frame_count"] / total_frame_count) < threshold
+        (frames_per_point["frame_count"] / total_frame_count) < drop_frame_threshold
     ]
 
     # Convert to list of DynamicPoint
@@ -316,6 +321,64 @@ def count_frames_filter_dynamic_points(
     return result
 
 
+import numpy as np
+from typing import List, Tuple
+
+
+def top_regions(
+    points: List[PointFrameCount],
+    image_size: ImageResolution,
+    region_size: Tuple[int, int] = (50, 50),
+    top_k: int = 1,
+) -> List[SquareRegion]:
+    """
+    Exhaustively find the top-k regions of size `region_size` anywhere in the image,
+    scoring each window by the sum of frame counts of contained points.
+    """
+    if not points:
+        return []
+
+    width, height = image_size
+    region_width, region_height = region_size
+
+    # Rasterize points into a frame-count map
+    frame_count_map = np.zeros((height, width), dtype=np.float32)
+    for p in points:
+        x, y = p.point.x, p.point.y
+        if 0 <= x < width and 0 <= y < height:
+            frame_count_map[y, x] += p.frame_count
+
+    # Compute integral image for fast window sum
+    integral = frame_count_map.cumsum(axis=0).cumsum(axis=1)
+
+    def window_sum(top, left):
+        bottom = top + region_height
+        right = left + region_width
+        total = integral[bottom - 1, right - 1]
+        if top > 0:
+            total -= integral[top - 1, right - 1]
+        if left > 0:
+            total -= integral[bottom - 1, left - 1]
+        if top > 0 and left > 0:
+            total += integral[top - 1, left - 1]
+        return total
+
+    best_regions = []
+
+    # Slide window over all positions
+    for top in range(0, height - region_height + 1):
+        for left in range(0, width - region_width + 1):
+            score = window_sum(top, left)
+            if score > 0:
+                best_regions.append(
+                    (score, SquareRegion(top, left, top + region_height, left + region_width))
+                )
+
+    # Sort by score descending and return top-k
+    best_regions.sort(key=lambda x: x[0], reverse=True)
+    return [r[1] for r in best_regions[:top_k]]
+
+
 def create_cropped_timelapse(  # pylint: disable=too-many-locals,too-many-positional-arguments,too-many-arguments,unused-argument,unused-variable
     input_files: List[Path],
     output_path: Path,
@@ -325,6 +388,7 @@ def create_cropped_timelapse(  # pylint: disable=too-many-locals,too-many-positi
     buffer_size: int,
     conversion_pois_functions: ConversionPOIsFunctions,
     conversion_scoring_functions: ConversionScoringFunctions,
+    aspect_ratio: AspectRatio,
     pois_vectors_path: Optional[Path],
     scores_vectors_path: Optional[Path],
     plot_path: Optional[Path],
@@ -339,6 +403,7 @@ def create_cropped_timelapse(  # pylint: disable=too-many-locals,too-many-positi
     :param buffer_size:
     :param conversion_pois_functions:
     :param conversion_scoring_functions:
+    :param aspect_ratio:
     :param pois_vectors_path:
     :param scores_vectors_path:
     :param plot_path:
@@ -393,8 +458,10 @@ def create_cropped_timelapse(  # pylint: disable=too-many-locals,too-many-positi
         )
     )
 
-    winning_points: List[PointFrameCount] = count_frames_filter_dynamic_points(
-        points_of_interest=points_of_interest, total_frame_count=total_frame_count, threshold=0.7
+    winning_points: List[PointFrameCount] = count_frames_filter(
+        points_of_interest=points_of_interest,
+        total_frame_count=total_frame_count,
+        drop_frame_threshold=0.7,
     )
 
     print("stop")

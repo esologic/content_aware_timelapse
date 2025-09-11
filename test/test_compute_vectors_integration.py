@@ -34,7 +34,7 @@ from content_aware_timelapse.frames_to_vectors.vector_computation.compute_vector
     CONVERT_SCORE_VIT_CLS,
 )
 from content_aware_timelapse.viderator import frames_in_video, image_common, video_common
-from content_aware_timelapse.viderator.viderator_types import ImageSourceType
+from content_aware_timelapse.viderator.viderator_types import ImageSourceType, RGBInt8ImageType
 
 
 @pytest.mark.parametrize(
@@ -121,26 +121,36 @@ def test_points_of_interest() -> None:
         )
     )
 
-    winning_points_and_counts: List[PointFrameCount] = (
-        cat_pipeline.count_frames_filter_dynamic_points(
-            points_of_interest=points_of_interest,
-            total_frame_count=video_frames.total_frame_count,
-            threshold=0.7,
-        )
+    winning_points_and_counts: List[PointFrameCount] = cat_pipeline.count_frames_filter(
+        points_of_interest=points_of_interest,
+        total_frame_count=video_frames.total_frame_count,
+        drop_frame_threshold=0.7,
+    )
+
+    # TODO regions need to be like 5 pixels in x and y apart
+    regions = cat_pipeline.top_regions(
+        points=winning_points_and_counts,
+        image_size=video_frames.original_resolution,
+        region_size=(500, 500),
+        top_k=2,
     )
 
     points_only = {points_and_counts.point for points_and_counts in winning_points_and_counts}
 
-    viz_frames_frames = (
-        image_common.draw_points_on_image(
+    def b(frame: RGBInt8ImageType, score: cat_pipeline.IndexPointsOfInterest):
+
+        with_points = image_common.draw_points_on_image(
             points=[point for point in score["points_of_interest"] if point in points_only],
             image=frame,
         )
-        for score, frame in zip(points_of_interest, drawing_frames)
-    )
+
+        return image_common.draw_regions_on_image(
+            regions=regions,
+            image=with_points,
+        )
+
+    vis_frames = (b(frame, score) for score, frame in zip(points_of_interest, drawing_frames))
 
     more_itertools.consume(
-        video_common.display_frame_forward_opencv(
-            source=viz_frames_frames, window_name="Viz Frames"
-        )
+        video_common.display_frame_forward_opencv(source=vis_frames, window_name="Viz Frames")
     )

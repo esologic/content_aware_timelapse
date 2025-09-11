@@ -14,6 +14,7 @@ from content_aware_timelapse.viderator.viderator_types import (
     ImageResolution,
     RGBInt8ImageType,
     XYPoint,
+    SquareRegion,
 )
 
 LOGGER = logging.getLogger(__name__)
@@ -131,4 +132,29 @@ def draw_points_on_image(
         draw.ellipse(bbox, fill=color, outline=color)
 
     # Always return NumPy array
+    return RGBInt8ImageType(np.array(pil_image))
+
+
+def draw_regions_on_image(
+    regions: List[SquareRegion],
+    image: RGBInt8ImageType,
+    color: Tuple[int, int, int] = (0, 255, 0),
+    width: int = 3,
+) -> RGBInt8ImageType:
+    """
+    Draws rectangular regions onto the input image for visualization.
+
+    :param regions: List of SquareRegion objects to draw.
+    :param image: Image to draw on (NumPy array).
+    :param color: Color of rectangle (R, G, B)
+    :param width: Line width of the rectangle.
+    :return: Modified image (NumPy array).
+    """
+    pil_image = Image.fromarray(image)
+    draw = ImageDraw.Draw(pil_image)
+
+    for region in regions:
+        bbox = [region.left, region.top, region.right, region.bottom]
+        draw.rectangle(bbox, outline=color, width=width)
+
     return RGBInt8ImageType(np.array(pil_image))

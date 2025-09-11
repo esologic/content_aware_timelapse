@@ -379,8 +379,8 @@ def _calculate_scores_vit_attention(packed: Tuple[int, npt.NDArray[np.float16]])
 def _calculate_poi_vit_attention(  # pylint: disable=too-many-locals
     packed: Tuple[int, npt.NDArray[np.float16]],
     original_source_resolution: ImageResolution,
-    num_interesting_points: int = 30,
-    edge_patch_margin: int = 1,  # number of patch rows/cols to skip around the edges
+    num_interesting_points: int = 20,
+    edge_patch_margin: int = 2,  # number of patch rows/cols to skip around the edges
 ) -> IndexPointsOfInterest:
     """
     Calculate attention-based scalar scores + top-K interesting points, excluding edge patches.
@@ -401,7 +401,16 @@ def _calculate_poi_vit_attention(  # pylint: disable=too-many-locals
     # Compute per-patch scores (exclude CLS token)
     patch_attn = attention_map[1:, 1:]  # shape: (196, 196)
     num_patches = patch_attn.shape[0]
-    patch_scores = patch_attn.sum(axis=0)
+
+    incoming = patch_attn.sum(axis=0)
+    outgoing = patch_attn.sum(axis=1)
+    entropy = -(
+        patch_attn
+        / patch_attn.sum(axis=1, keepdims=True)
+        * np.log(patch_attn / patch_attn.sum(axis=1, keepdims=True) + 1e-8)
+    ).sum(axis=1)
+
+    patch_scores = incoming + outgoing - entropy  # high attention + sharp distribution
 
     # Select top points, excluding edge patches
     points_to_select = min(num_interesting_points, num_patches)

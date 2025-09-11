@@ -33,3 +33,23 @@ class XYPoint(NamedTuple):
 
     x: int
     y: int
+
+
+class AspectRatio(NamedTuple):
+    """
+    Standard NT for an aspect ratio.
+    """
+
+    width: float
+    height: float
+
+
+class SquareRegion(NamedTuple):
+    """
+    Standard
+    """
+
+    top: int
+    left: int
+    bottom: int
+    right: int
