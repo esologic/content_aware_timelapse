@@ -90,6 +90,7 @@ def _map_output_to_source(
     :param side_length: VIT side length.
     :return: Remapped point.
     """
+
     scale = min(side_length / original_resolution.width, side_length / original_resolution.height)
     pad_x = (side_length - round(original_resolution.width * scale)) // 2
     pad_y = (side_length - round(original_resolution.height * scale)) // 2

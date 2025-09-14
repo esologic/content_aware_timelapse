@@ -13,6 +13,7 @@ import more_itertools
 from tqdm import tqdm
 
 import content_aware_timelapse.viderator.frames_in_video
+from content_aware_timelapse.frames_to_vectors.conversion import IntermediateFileInfo
 from content_aware_timelapse.frames_to_vectors.conversion_types import (
     ConversionPOIsFunctions,
     ConversionScoringFunctions,
@@ -59,6 +60,8 @@ def load_input_videos(input_files: List[Path], tqdm_desc: str) -> _FramesCountRe
     """
     Helper function to combine the input videos.
     :param input_files: List of input videos.
+    :param tqdm_desc: The resulting `.frames` field in the output iterator will be wrapped
+    in a TQDM with this description.
     :return: NT containing the total frame count and a joined iterator of all the input
     frames.
     """
@@ -101,11 +104,14 @@ def preload_and_scale(
     buffer_size: int,
 ) -> _FramesCountResolution:
     """
-
-    :param frames_count_resolution:
-    :param max_side_length:
-    :param buffer_size:
-    :return:
+    Wraps a few library functions to optionally scale and pre-load input videos from disk into
+    RAM for faster processing. See the underlying docs for `iterator_common.preload_into_memory`
+    for the conditions of that load optimization.
+    :param frames_count_resolution: Source.
+    :param max_side_length: If given, the source frames will be scaled such that maximum side
+    length is scaled to this value while maintaining the source aspect ratio.
+    :param buffer_size: Number of frames to preload into memory. If 0, no preloading will occur.
+    :return: NT that switches the `frames` field of the input with the modified buffer result.
     """
 
     output_frames = frames_count_resolution.frames
@@ -140,6 +146,7 @@ def create_timelapse_score(  # pylint: disable=too-many-locals,too-many-position
     batch_size: int,
     buffer_size: int,
     conversion_scoring_functions: ConversionScoringFunctions,
+    deselection_radius_frames: int,
     vectors_path: Optional[Path],
     plot_path: Optional[Path],
 ) -> None:
@@ -157,6 +164,9 @@ def create_timelapse_score(  # pylint: disable=too-many-locals,too-many-position
     :param conversion_scoring_functions: A tuple of callables that contain the vectorization
     function and the function to score those vectors. Lets us swap the backend between different
     CV processes.
+    :param deselection_radius_frames: Frames surrounding high scoring frames removed to
+    prevent clustering. This is the number of frames before/after a high scoring one that are
+    slightly decreased in score.
     :param vectors_path: Path to the vectors file. This file is an on-disk copy of each of the
     vectorization results for the input frames. This lets us recover from a run that has to be
     ended early, or lets us re-run selection without having to burn more compute.
@@ -180,15 +190,22 @@ def create_timelapse_score(  # pylint: disable=too-many-locals,too-many-position
                 input_files=input_files, tqdm_desc="Reading Output Frames"
             ).frames,
             source_frame_count=frames_count_resolution.total_frame_count,
-            input_signature=create_videos_signature(
-                video_paths=input_files, modifications_salt=None
+            intermediate_info=(
+                IntermediateFileInfo(
+                    path=vectors_path,
+                    signature=create_videos_signature(
+                        video_paths=input_files, modifications_salt=None
+                    ),
+                )
+                if vectors_path is not None
+                else None
             ),
             output_path=output_path,
             num_output_frames=calculate_output_frames(duration=duration, output_fps=output_fps),
             output_fps=output_fps,
             batch_size=batch_size,
             conversion_scoring_functions=conversion_scoring_functions,
-            vectors_path=vectors_path,
+            deselection_radius_frames=deselection_radius_frames,
             plot_path=plot_path,
         )
     )
@@ -205,6 +222,7 @@ def create_timelapse_crop_score(  # pylint: disable=too-many-locals,too-many-pos
     conversion_pois_functions: ConversionPOIsFunctions,
     conversion_scoring_functions: ConversionScoringFunctions,
     aspect_ratio: AspectRatio,
+    scoring_deselection_radius_frames: int,
     pois_vectors_path: Optional[Path],
     scores_vectors_path: Optional[Path],
     plot_path: Optional[Path],
@@ -255,8 +273,14 @@ def create_timelapse_crop_score(  # pylint: disable=too-many-locals,too-many-pos
         analysis_frames=pois_frames_count_resolution.frames,
         output_frames=original_frames_for_poi_cropping,
         drawing_frames=None,
-        intermediate_path=pois_vectors_path,
-        input_signature=input_signature_pois,
+        intermediate_info=(
+            IntermediateFileInfo(
+                path=pois_vectors_path,
+                signature=create_videos_signature(video_paths=input_files, modifications_salt=None),
+            )
+            if pois_vectors_path is not None
+            else None
+        ),
         batch_size=batch_size_pois,
         total_input_frames=pois_frames_count_resolution.total_frame_count,
         convert=conversion_pois_functions.conversion,
@@ -299,16 +323,25 @@ def create_timelapse_crop_score(  # pylint: disable=too-many-locals,too-many-pos
             scoring_frames=scoring_frames_count_resolution.frames,
             output_frames=output_frames_count_resolution.frames,
             source_frame_count=pois_frames_count_resolution.total_frame_count,
-            input_signature=create_videos_signature(
-                video_paths=input_files,
-                modifications_salt=json.dumps({"winning_region": poi_crop_result.winning_region}),
+            intermediate_info=(
+                IntermediateFileInfo(
+                    path=scores_vectors_path,
+                    signature=create_videos_signature(
+                        video_paths=input_files,
+                        modifications_salt=json.dumps(
+                            {"winning_region": poi_crop_result.winning_region}
+                        ),
+                    ),
+                )
+                if scores_vectors_path is not None
+                else None
             ),
             output_path=output_path,
             num_output_frames=calculate_output_frames(duration=duration, output_fps=output_fps),
             output_fps=output_fps,
             batch_size=batch_size_scores,
             conversion_scoring_functions=conversion_scoring_functions,
-            vectors_path=scores_vectors_path,
+            deselection_radius_frames=scoring_deselection_radius_frames,
             plot_path=plot_path,
         )
     )

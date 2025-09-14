@@ -60,6 +60,7 @@ def test_create_timelapse_score(
         vectors_path=vectors_path,
         plot_path=None,
         buffer_size=buffer_size,
+        deselection_radius_frames=10,
     )
 
     video_frames = frames_in_video.frames_in_video_opencv(
@@ -107,6 +108,7 @@ def test_create_timelapse_score_output(
         vectors_path=None,
         plot_path=None,
         buffer_size=0,
+        deselection_radius_frames=10,
     )
 
     video_frames = frames_in_video.frames_in_video_opencv(
@@ -122,8 +124,6 @@ def test_create_timelapse_crop_score(
 ) -> None:
     """
     Using a test asset, runs the main `create_timelapse` function and inspects the output.
-    :param buffer_size: Passed to function.
-    :param batch_size: Passed to function.
     :param tmpdir: Test fixture.
     :return: None
     """
@@ -143,6 +143,7 @@ def test_create_timelapse_crop_score(
         batch_size_pois=50,
         batch_size_scores=50,
         aspect_ratio=AspectRatio(4, 3),
+        scoring_deselection_radius_frames=10,
         pois_vectors_path=pois_vectors_path,
         scores_vectors_path=scores_vectors_path,
         plot_path=None,

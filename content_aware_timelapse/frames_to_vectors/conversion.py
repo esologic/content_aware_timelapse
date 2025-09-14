@@ -5,7 +5,7 @@ Contains the frames to vectors pipeline, the actual conversion functions are sta
 import itertools
 import logging
 from pathlib import Path
-from typing import Iterator, Optional
+from typing import Iterator, NamedTuple, Optional
 
 import more_itertools
 import numpy as np
@@ -18,10 +18,18 @@ from content_aware_timelapse.viderator.viderator_types import ImageSourceType
 LOGGER = logging.getLogger(__name__)
 
 
+class IntermediateFileInfo(NamedTuple):
+    """
+    Fields needed to define an intermediate vector file.
+    """
+
+    path: Path
+    signature: str
+
+
 def frames_to_vectors(  # pylint:disable=too-many-positional-arguments
     frames: ImageSourceType,
-    intermediate_path: Optional[Path],
-    input_signature: str,
+    intermediate_info: Optional[IntermediateFileInfo],
     batch_size: int,
     total_input_frames: int,
     convert_batches: ConvertBatchesFunction,
@@ -31,8 +39,8 @@ def frames_to_vectors(  # pylint:disable=too-many-positional-arguments
     Because this process is expensive, even with GPU, the intermediate vectors are written to disk
     to avoid re-doing the work.
     :param frames: Frames to process.
-    :param intermediate_path: Vectors file to store intermediate results on disk.
-    :param input_signature: Describes the video in `frames` to ensure we don't read from the wrong
+    :param intermediate_info: Describes the intermediate vector file, if not given it will not
+    be used.
     intermediate vectors from the input file.
     :param batch_size: Number of frames to process at once. Should try to utilize all GPU memory.
     :param total_input_frames: Number of frames in `frames`.
@@ -40,10 +48,10 @@ def frames_to_vectors(  # pylint:disable=too-many-positional-arguments
     :return: Vectors, one per input frame.
     """
 
-    if intermediate_path is not None:
+    if intermediate_info is not None:
 
         intermediate = vector_file.read_vector_file(
-            vector_file=intermediate_path, input_signature=input_signature
+            vector_file=intermediate_info.path, input_signature=intermediate_info.signature
         )
 
         LOGGER.info(f"Read in {intermediate.length} intermediate vectors from file.")
@@ -66,8 +74,8 @@ def frames_to_vectors(  # pylint:disable=too-many-positional-arguments
 
             fresh_tensors = vector_file.write_vector_file_forward(
                 vector_iterator=fresh_tensors,
-                vector_file=intermediate_path,
-                input_signature=input_signature,
+                vector_file=intermediate_info.path,
+                input_signature=intermediate_info.signature,
             )
 
         yield from itertools.chain.from_iterable(

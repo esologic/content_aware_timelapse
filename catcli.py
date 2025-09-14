@@ -118,6 +118,15 @@ viz_path_arg = click.option(
     required=False,
 )
 
+deselect_arg = click.option(
+    "--deselect",
+    "-d",
+    type=click.IntRange(min=0),
+    help="Frames surrounding high scores will be dropped by a radius that starts with this value.",
+    required=False,
+    default=1000,
+)
+
 
 _CONVERSION_SCORING_FUNCTIONS_LOOKUP = {
     VectorBackendScores.vit_cls: CONVERT_SCORE_VIT_CLS,
@@ -129,7 +138,7 @@ _CONVERSION_SCORING_FUNCTIONS_LOOKUP = {
 @click.group()
 def cli() -> None:
     """
-    Tools to create timelapses.
+    Uses the contents of the frames in source files to create timelapses.
 
     \f
 
@@ -137,7 +146,12 @@ def cli() -> None:
     """
 
 
-@cli.command(short_help="Looks at the content of the frames to choose the most interesting ones.")
+@cli.command(
+    short_help=(
+        "Numerically scores the input frames based on their contents, "
+        "then selects the best frames."
+    )
+)
 @input_files_arg
 @output_path_arg
 @duration_arg
@@ -154,10 +168,11 @@ def cli() -> None:
 @buffer_size_arg
 @create_enum_option(
     arg_flag="--backend",
-    help_message="Sets which vectorization backend is used.",
+    help_message="Sets which vectorization backend is used to score the frames.",
     default=VectorBackendScores.vit_cls,
     input_enum=VectorBackendScores,
 )
+@deselect_arg
 @click.option(
     "--vectors-path",
     "-v",
@@ -174,12 +189,12 @@ def content(  # pylint: disable=too-many-locals,too-many-positional-arguments
     batch_size: int,
     buffer_size: Optional[int],
     backend: VectorBackendScores,
+    deselect: int,
     vectors_path: Optional[Path],
     viz_path: Optional[Path],
 ) -> None:
     """
-    Create a timelapse based on the most interesting parts of a video rather than blindly
-    down-selecting frames.
+    Numerically scores the input frames based on their contents, then selects the best frames.
 
     \f
 
@@ -190,6 +205,7 @@ def content(  # pylint: disable=too-many-locals,too-many-positional-arguments
     :param batch_size: See click docs.
     :param buffer_size: See click docs.
     :param backend: See click docs.
+    :param deselect: See click docs.
     :param vectors_path: See click docs.
     :param viz_path: See click docs.
     :return: None
@@ -203,6 +219,7 @@ def content(  # pylint: disable=too-many-locals,too-many-positional-arguments
         batch_size=batch_size,
         buffer_size=buffer_size,
         conversion_scoring_functions=_CONVERSION_SCORING_FUNCTIONS_LOOKUP[backend],
+        deselection_radius_frames=deselect,
         vectors_path=vectors_path,
         plot_path=viz_path,
     )
@@ -256,7 +273,12 @@ class AspectRatioParamType(click.ParamType):
 ASPECT_RATIO: AspectRatioParamType = AspectRatioParamType()
 
 
-@cli.command(short_help="Adds content aware cropping at the cost of performance.")
+@cli.command(
+    short_help=(
+        "Crops the input to the most interesting region, "
+        "then selects the best frames of cropped region."
+    )
+)
 @input_files_arg
 @output_path_arg
 @duration_arg
@@ -265,7 +287,10 @@ ASPECT_RATIO: AspectRatioParamType = AspectRatioParamType()
     "--batch-size-pois",
     "-bp",
     type=click.IntRange(min=1),
-    help="Frames are sent to GPU for processing in batches of this size.",
+    help=(
+        "Scaled frames for Points of Interest calculation are sent to GPU for"
+        " processing in batches of this size."
+    ),
     required=True,
     default=600,
     show_default=True,
@@ -274,7 +299,7 @@ ASPECT_RATIO: AspectRatioParamType = AspectRatioParamType()
     "--batch-size-scores",
     "-bs",
     type=click.IntRange(min=1),
-    help="Frames are sent to GPU for processing in batches of this size.",
+    help="Scaled frames for scoring are sent to GPU for processing in batches of this size.",
     required=True,
     default=600,
     show_default=True,
@@ -282,13 +307,13 @@ ASPECT_RATIO: AspectRatioParamType = AspectRatioParamType()
 @buffer_size_arg
 @create_enum_option(
     arg_flag="--backend-pois",
-    help_message="Sets which vectorization backend is used.",
+    help_message="Sets which Points of Interest discovery backend is used.",
     default=VectorBackendPOIs.vit_attention,
     input_enum=VectorBackendPOIs,
 )
 @create_enum_option(
     arg_flag="--backend-scores",
-    help_message="Sets which vectorization backend is used.",
+    help_message="Sets which scoring backend is used.",
     default=VectorBackendScores.vit_cls,
     input_enum=VectorBackendScores,
 )
@@ -299,18 +324,19 @@ ASPECT_RATIO: AspectRatioParamType = AspectRatioParamType()
     required=True,
     help="Aspect ratio in the format WIDTH:HEIGHT (e.g., 16:9, 4:3, 1.85:1).",
 )
+@deselect_arg
 @click.option(
     "--vectors-path-pois",
     "-vp",
     type=click.Path(file_okay=True, dir_okay=False, writable=True, path_type=Path),
-    help="Intermediate vectors will be written to this path. Can be used to re-run.",
+    help="Intermediate POI vectors will be written to this path. Can be used to re-run.",
     required=False,
 )
 @click.option(
     "--vectors-path-scores",
     "-vs",
     type=click.Path(file_okay=True, dir_okay=False, writable=True, path_type=Path),
-    help="Intermediate vectors will be written to this path. Can be used to re-run.",
+    help="Intermediate scoring vectors will be written to this path. Can be used to re-run.",
     required=False,
 )
 @viz_path_arg
@@ -325,26 +351,31 @@ def content_cropped(  # pylint: disable=too-many-locals,too-many-positional-argu
     backend_pois: VectorBackendPOIs,
     backend_scores: VectorBackendScores,
     aspect_ratio: AspectRatio,
+    deselect: int,
     vectors_path_pois: Optional[Path],
     vectors_path_scores: Optional[Path],
     viz_path: Optional[Path],
 ) -> None:
     """
+    Crops the input to the most interesting region, then selects the best frames of cropped region.
 
-    :param input_files:
-    :param output_path:
-    :param duration:
-    :param output_fps:
-    :param batch_size_pois:
-    :param batch_size_scores:
-    :param buffer_size:
-    :param backend_pois:
-    :param backend_scores:
-    :param aspect_ratio:
-    :param vectors_path_pois:
-    :param vectors_path_scores:
-    :param viz_path:
-    :return:
+    \f
+
+    :param input_files: See click docs.
+    :param output_path: See click docs.
+    :param duration: See click docs.
+    :param output_fps: See click docs.
+    :param batch_size_pois: See click docs.
+    :param batch_size_scores: See click docs.
+    :param buffer_size: See click docs.
+    :param backend_pois: See click docs.
+    :param backend_scores: See click docs.
+    :param aspect_ratio: See click docs.
+    :param deselect: See click docs.
+    :param vectors_path_pois: See click docs.
+    :param vectors_path_scores: See click docs.
+    :param viz_path: See click docs.
+    :return: None
     """
 
     cat_pipelines.create_timelapse_crop_score(
@@ -358,6 +389,7 @@ def content_cropped(  # pylint: disable=too-many-locals,too-many-positional-argu
         conversion_pois_functions=_CONVERSION_POIS_FUNCTIONS_LOOKUP[backend_pois],
         conversion_scoring_functions=_CONVERSION_SCORING_FUNCTIONS_LOOKUP[backend_scores],
         aspect_ratio=aspect_ratio,
+        scoring_deselection_radius_frames=deselect,
         pois_vectors_path=vectors_path_pois,
         scores_vectors_path=vectors_path_scores,
         plot_path=viz_path,

@@ -29,6 +29,14 @@ def test_create_padded_square_resizer(
     fill_color: Tuple[int, int, int],
     input_resolution: ImageResolution,
 ) -> None:
+    """
+    Numerically using color distribution that the pad-resize operation works as expected.
+    :param side_length: Desired side length of the padded image.
+    :param fill_color: Pad color.
+    :param input_resolution: Image to scale and pad.
+    :return: None
+    """
+
     resizer = compute_vectors_vit._create_padded_square_resizer(  # pylint: disable=protected-access
         side_length=side_length, fill_color=fill_color
     )

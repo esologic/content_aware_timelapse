@@ -60,11 +60,10 @@ def test_sorting_scored_vectors(
 
     vectors = content_aware_timelapse.frames_to_vectors.conversion.frames_to_vectors(
         frames=frames,
-        input_signature="test signature",
+        intermediate_info=None,
         batch_size=1,
         total_input_frames=1,
         convert_batches=conversion_scoring_functions.conversion,
-        intermediate_path=None,
     )
 
     score_indexes: List[IndexScores] = list(
@@ -79,6 +78,7 @@ def test_sorting_scored_vectors(
         index_scores=score_indexes,
         num_output_frames=len(score_indexes) - 2,
         plot_path=None,
+        deselection_radius_frames=0,
     )
 
     assert indices == list(sorted(indices, reverse=True))

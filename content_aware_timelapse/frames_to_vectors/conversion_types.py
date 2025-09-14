@@ -106,8 +106,8 @@ class ScorePOIsFunction(Protocol):
         num_interesting_points: int,
     ) -> IndexPointsOfInterest:
         """
-        :param packed: A tuple, the index of the frame in the input and the calculated vectors
-        for that frame.
+        :param packed: A tuple, the index of the frame in the input and the vectors (an attention
+        map) for that frame.
         :param original_source_resolution: Used to remap interesting locations back onto the full
         coordinate space of the source image.
         :param num_interesting_points: The number of points to generate per frame.

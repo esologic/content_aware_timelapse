@@ -9,6 +9,7 @@ from test.test_viderator import viderator_test_common
 import pytest
 
 import content_aware_timelapse.frames_to_vectors.conversion
+from content_aware_timelapse.frames_to_vectors.conversion import IntermediateFileInfo
 from content_aware_timelapse.frames_to_vectors.conversion_types import ConvertBatchesFunction
 from content_aware_timelapse.frames_to_vectors.vector_computation.compute_vectors_clip import (
     CONVERT_CLIP,
@@ -42,8 +43,7 @@ def test_frames_to_vectors_pipeline(convert_batches_function: ConvertBatchesFunc
                 frames=viderator_test_common.create_black_frames_iterator(
                     image_resolution=ImageResolution(1000, 1000), count=1
                 ),
-                intermediate_path=Path(tmp.name),
-                input_signature="test signature",
+                intermediate_info=IntermediateFileInfo(Path(tmp.name), "test signature"),
                 batch_size=1,
                 total_input_frames=1,
                 convert_batches=convert_batches_function,
