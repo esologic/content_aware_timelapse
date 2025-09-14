@@ -7,10 +7,11 @@ Thank u: https://stackoverflow.com/a/70917416
 import pickle
 import shutil
 import threading
+from functools import partial
 from pathlib import Path
 from queue import Queue
 from tempfile import NamedTemporaryFile
-from typing import Any, Iterator, List, NamedTuple, Tuple, TypeVar, cast
+from typing import Any, Iterator, List, NamedTuple, Optional, Tuple, TypeVar, cast
 from typing_extensions import Protocol
 
 import h5py
@@ -85,11 +86,18 @@ PICKLE_SERIALIZER = Serializer(serialize=serialize_pickle, deserialize=deseriali
 HDF5_DATASET_NAME = "item_dataset"
 
 
-def serialize_hdf5(path: Path, items: List[RGBInt8ImageType]) -> None:
+def serialize_hdf5(
+    path: Path,
+    items: List[RGBInt8ImageType],
+    compression: Optional[str],
+    compression_opts: Optional[int],
+) -> None:
     """
     Writes an item to disk using hdf5, a format for storing data arrays on disk.
     :param path: Path to write the serialized object to on disk.
     :param items: List of objects to serialize.
+    :param compression: Passed to underlying `.create_dataset`
+    :param compression_opts: Passed to underlying `.create_dataset`
     :return: None
     """
 
@@ -100,6 +108,8 @@ def serialize_hdf5(path: Path, items: List[RGBInt8ImageType]) -> None:
             shape=items_array.shape,
             dtype=items_array.dtype,
             data=items_array,
+            compression=compression,
+            compression_opts=compression_opts,
         )
 
 
@@ -114,7 +124,14 @@ def deserialize_hdf5(path: Path) -> List[RGBInt8ImageType]:
         return [RGBInt8ImageType(frame) for frame in np.array(f[HDF5_DATASET_NAME])]
 
 
-HDF5_SERIALIZER = Serializer(serialize=serialize_hdf5, deserialize=deserialize_hdf5)
+HDF5_SERIALIZER = Serializer(
+    serialize=partial(serialize_hdf5, compression=None, compression_opts=None),
+    deserialize=deserialize_hdf5,
+)
+HDF5_COMPRESSED_SERIALIZER = Serializer(
+    serialize=partial(serialize_hdf5, compression="gzip", compression_opts=3),
+    deserialize=deserialize_hdf5,
+)
 
 
 def load_queue_items(queue: "Queue[Path]", deserialize: DeSerializeItem) -> Iterator[T]:

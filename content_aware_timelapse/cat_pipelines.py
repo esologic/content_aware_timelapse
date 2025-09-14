@@ -7,7 +7,7 @@ import json
 import logging
 from functools import partial
 from pathlib import Path
-from typing import List, NamedTuple, Optional, cast
+from typing import List, NamedTuple, Optional, Set, cast
 
 import more_itertools
 from tqdm import tqdm
@@ -76,10 +76,12 @@ def load_input_videos(input_files: List[Path], tqdm_desc: str) -> _FramesCountRe
 
     total_frame_count = sum((video_frames.total_frame_count for video_frames in input_video_frames))
 
-    input_resolutions = [video_frames.original_resolution for video_frames in input_video_frames]
+    input_resolutions: Set[ImageResolution] = set(
+        video_frames.original_resolution for video_frames in input_video_frames
+    )
 
-    if len(input_video_frames) > 1:
-        raise ValueError("Input videos have different resolutions.")
+    if len(input_resolutions) > 1:
+        raise ValueError(f"Input videos have different resolutions: {input_video_frames}")
 
     return _FramesCountResolution(
         total_frame_count=total_frame_count,
@@ -244,7 +246,7 @@ def create_timelapse_crop_score(  # pylint: disable=too-many-locals,too-many-pos
 
     original_frames_for_poi_analysis, original_frames_for_poi_cropping = (
         iterator_on_disk.tee_disk_cache(
-            iterator=source.frames, copies=1, serializer=iterator_on_disk.HDF5_SERIALIZER
+            iterator=source.frames, copies=1, serializer=iterator_on_disk.HDF5_COMPRESSED_SERIALIZER
         )
     )
 
@@ -284,10 +286,13 @@ def create_timelapse_crop_score(  # pylint: disable=too-many-locals,too-many-pos
     # We need to consume the resulting cropped image source twice, so it is cached to disk
     # because the cropped frames could be very large leading to memory pressure.
 
+    # TODO: I'd like to be able to not have to go to disk here at all. But this would require
+    # We preserve the frames after vectorization which is complicated.
+
     cropped_frames_for_scoring, cropped_frames_for_output = iterator_on_disk.tee_disk_cache(
         iterator=poi_crop_result.cropped_to_region,
         copies=1,
-        serializer=iterator_on_disk.HDF5_SERIALIZER,
+        serializer=iterator_on_disk.HDF5_COMPRESSED_SERIALIZER,
     )
 
     scoring_frames_count_resolution = preload_and_scale(
