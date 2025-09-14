@@ -96,7 +96,7 @@ class IndexPointsOfInterest(TypedDict):
 
 class ScorePOIsFunction(Protocol):
     """
-    Describes functions that convert vectors to numerical properties of the vectors.
+    Describes functions that convert vectors to points of interest in the source images.
     """
 
     def __call__(
@@ -108,10 +108,10 @@ class ScorePOIsFunction(Protocol):
         """
         :param packed: A tuple, the index of the frame in the input and the calculated vectors
         for that frame.
-        :param original_source_resolution: Consumed in the `interesting_points` field of the output,
-        the original source resolution of the input frames as they exist pre-processing.
+        :param original_source_resolution: Used to remap interesting locations back onto the full
+        coordinate space of the source image.
         :param num_interesting_points: The number of points to generate per frame.
-        :return: An IndexScores, which are the numerical properties of the vectors.
+        :return: An NT that links the frame index with the list of interesting points.
         """
 
 

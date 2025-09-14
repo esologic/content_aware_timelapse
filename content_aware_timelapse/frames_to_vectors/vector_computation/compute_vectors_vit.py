@@ -78,6 +78,34 @@ def _create_padded_square_resizer(
     return output_callable
 
 
+def _map_output_to_source(
+    output_point: XYPoint, original_resolution: ImageResolution, side_length: int
+) -> XYPoint:
+    """
+    Maps a point in the ViT output image to the coordinate space of the original input.
+    Reverses the scale and pad operation (`_create_padded_square_resizer`) needed to send the
+    image in for VIT inference.
+    :param output_point: XYPoint of the output image.
+    :param original_resolution: Size of the source image.
+    :param side_length: VIT side length.
+    :return: Remapped point.
+    """
+    scale = min(side_length / original_resolution.width, side_length / original_resolution.height)
+    pad_x = (side_length - round(original_resolution.width * scale)) // 2
+    pad_y = (side_length - round(original_resolution.height * scale)) // 2
+
+    x_src = (output_point.x - pad_x) / scale
+    y_src = (output_point.y - pad_y) / scale
+
+    # Clamp to valid coordinates
+    x_src = int(round(x_src))
+    y_src = int(round(y_src))
+    x_src = max(0, min(x_src, original_resolution.width - 1))
+    y_src = max(0, min(y_src, original_resolution.height - 1))
+
+    return XYPoint(x_src, y_src)
+
+
 VIT_IMAGE_TRANSFORM = transforms.Compose(
     [
         _create_padded_square_resizer(),
@@ -302,34 +330,6 @@ def _calculate_scores_vit_cls(packed: Tuple[int, npt.NDArray[np.float16]]) -> In
     )
 
 
-def _map_output_to_source(
-    x_out: int, y_out: int, orig_size: Tuple[int, int], side_length: int
-) -> XYPoint:
-    """
-
-    :param x_out:
-    :param y_out:
-    :param orig_size:
-    :param side_length:
-    :return:
-    """
-    orig_w, orig_h = orig_size
-    scale = min(side_length / orig_w, side_length / orig_h)
-    pad_x = (side_length - round(orig_w * scale)) // 2
-    pad_y = (side_length - round(orig_h * scale)) // 2
-
-    x_src = (x_out - pad_x) / scale
-    y_src = (y_out - pad_y) / scale
-
-    # Clamp to valid coordinates
-    x_src = int(round(x_src))
-    y_src = int(round(y_src))
-    x_src = max(0, min(x_src, orig_w - 1))
-    y_src = max(0, min(y_src, orig_h - 1))
-
-    return XYPoint(x_src, y_src)
-
-
 def _calculate_scores_vit_attention(packed: Tuple[int, npt.NDArray[np.float16]]) -> IndexScores:
     """
     Calculate scores from the attention map(s) of an image.
@@ -386,9 +386,8 @@ def _calculate_poi_vit_attention(  # pylint: disable=too-many-locals
 
     :param packed: Tuple of (frame_index, attention_map). Shape: (H,197,197) or (197,197)
     :param original_source_resolution: Width/height of original image (before ViT resize/pad)
-    :param num_interesting_points: Number of interesting points to extract
-    :param edge_patch_margin: Number of patch rows/columns to exclude at each image border
-    :return: IndexScores with scalar metrics and points_of_interest
+    :param num_interesting_points: Number of interesting points to extract. This will be per frame.
+    :return: Links the frame and the detected points of interest.
     """
     index, attention_map = packed
     attention_map = np.asarray(attention_map).astype(np.float32)
@@ -428,9 +427,8 @@ def _calculate_poi_vit_attention(  # pylint: disable=too-many-locals
 
             # Map to original image
             pt = _map_output_to_source(
-                x_out=int(round(x_vit)),
-                y_out=int(round(y_vit)),
-                orig_size=(original_source_resolution.width, original_source_resolution.height),
+                output_point=XYPoint(x=int(round(x_vit)), y=int(round(y_vit))),
+                original_resolution=original_source_resolution,
                 side_length=VIT_SIDE_LENGTH,
             )
 
@@ -439,7 +437,7 @@ def _calculate_poi_vit_attention(  # pylint: disable=too-many-locals
                 break
 
     return IndexPointsOfInterest(
-        frame_index=int(index),
+        frame_index=index,
         points_of_interest=points_of_interest,
     )
 

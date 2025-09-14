@@ -128,7 +128,7 @@ def test_create_timelapse_crop_score(
     :return: None
     """
 
-    output_path = Path("./") / "output.mp4"
+    output_path = Path(tmpdir) / "output.mp4"
     pois_vectors_path = Path(tmpdir) / "pios_vectors.hdf5"
     scores_vectors_path = Path(tmpdir) / "scores_vectors.hdf5"
 
@@ -142,7 +142,7 @@ def test_create_timelapse_crop_score(
         output_fps=output_fps,
         batch_size_pois=50,
         batch_size_scores=50,
-        aspect_ratio=AspectRatio(9, 16),
+        aspect_ratio=AspectRatio(4, 3),
         pois_vectors_path=pois_vectors_path,
         scores_vectors_path=scores_vectors_path,
         plot_path=None,
