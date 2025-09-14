@@ -16,11 +16,12 @@ import numpy as np
 from ffmpeg.nodes import FilterableStream
 from vidgear.gears import WriteGear
 
-from content_aware_timelapse.viderator.image_common import image_resolution, resize_image
+from content_aware_timelapse.viderator import image_common
 from content_aware_timelapse.viderator.iterator_common import first_item_from_iterator
 from content_aware_timelapse.viderator.viderator_types import (
     ImageResolution,
     ImageSourceType,
+    RectangleRegion,
     RGBInt8ImageType,
 )
 
@@ -169,7 +170,7 @@ def _create_video_writer_resolution(
             :param image: To write.
             :return: None
             """
-            if image_resolution(image) != resolution:
+            if image_common.image_resolution(image) != resolution:
                 raise ValueError("Incoming frame did not match output resolution!")
             opencv_writer.write(image)
 
@@ -285,7 +286,7 @@ def write_source_to_disk_forward(
         writer = _create_video_writer_resolution(
             video_path=output_path,
             video_fps=video_fps,
-            resolution=image_resolution(first_frame),
+            resolution=image_common.image_resolution(first_frame),
             high_quality=high_quality,
         )
 
@@ -364,8 +365,8 @@ def resize_source(source: ImageSourceType, resolution: ImageResolution) -> Image
 
     yield from (
         (
-            resize_image(image, resolution, delete=True)
-            if image_resolution(image) != resolution
+            image_common.resize_image(image, resolution, delete=True)
+            if image_common.image_resolution(image) != resolution
             else image
         )
         for image in source
@@ -433,7 +434,7 @@ def display_frame_forward_opencv(
             window_name,
             cv2.cvtColor(
                 (
-                    resize_image(frame, display_resolution)
+                    image_common.resize_image(frame, display_resolution)
                     if display_resolution is not None
                     else frame
                 ),
@@ -447,3 +448,16 @@ def display_frame_forward_opencv(
     yield from map(display_frame, source)
 
     cv2.destroyWindow(window_name)
+
+
+def crop_source(source: ImageSourceType, region: RectangleRegion) -> ImageSourceType:
+    """
+
+    :param source:
+    :param region:
+    :return:
+    """
+
+    yield from (
+        (image_common.crop_image(image=image, region=region, delete=True)) for image in source
+    )

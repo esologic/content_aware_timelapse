@@ -103,12 +103,14 @@ class ScorePOIsFunction(Protocol):
         self,
         packed: Tuple[int, npt.NDArray[np.float16]],
         original_source_resolution: ImageResolution,
+        num_interesting_points: int,
     ) -> IndexPointsOfInterest:
         """
         :param packed: A tuple, the index of the frame in the input and the calculated vectors
         for that frame.
         :param original_source_resolution: Consumed in the `interesting_points` field of the output,
         the original source resolution of the input frames as they exist pre-processing.
+        :param num_interesting_points: The number of points to generate per frame.
         :return: An IndexScores, which are the numerical properties of the vectors.
         """
 

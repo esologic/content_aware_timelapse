@@ -12,7 +12,7 @@ import json
 import logging
 import re
 from pathlib import Path
-from typing import Iterator, List, NamedTuple, Tuple
+from typing import Dict, Iterator, List, NamedTuple, Optional, Tuple
 
 import h5py
 import numpy as np
@@ -25,10 +25,12 @@ VERSION_ATTRIBUTE_NAME = "vector_file_version"
 CURRENT_VECTOR_FILE_VERSION = "1.0.0"
 
 
-def create_videos_signature(video_paths: List[Path]) -> str:
+def create_videos_signature(video_paths: List[Path], modifications_salt: Optional[str]) -> str:
     """
     Used to describe the contents of a vector file. Becomes an attribute in the HDF5 file.
     :param video_paths: Paths to the videos in the vector file.
+    :param modifications_salt: Added to the output signature. Should be enough to distinguish two
+    copies of the same input videos that have been modified.
     :return: A string, ready to be input to the HDF5 file.
     """
 
@@ -46,8 +48,7 @@ def create_videos_signature(video_paths: List[Path]) -> str:
 
         return sha256.hexdigest()
 
-    # Convert dictionary to JSON string
-    return json.dumps(
+    videos_list: List[Dict[str, str]] = [
         {
             video.name: json.dumps(
                 {
@@ -56,6 +57,14 @@ def create_videos_signature(video_paths: List[Path]) -> str:
                 }
             )
             for video in sorted(video_paths, key=str)
+        }
+    ]
+
+    # Convert dictionary to JSON string
+    return json.dumps(
+        {
+            "modifications_salt": modifications_salt,
+            "videos": videos_list,
         }
     )
 

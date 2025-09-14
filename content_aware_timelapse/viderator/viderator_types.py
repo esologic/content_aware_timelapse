@@ -44,7 +44,7 @@ class AspectRatio(NamedTuple):
     height: float
 
 
-class SquareRegion(NamedTuple):
+class RectangleRegion(NamedTuple):
     """
     Standard
     """

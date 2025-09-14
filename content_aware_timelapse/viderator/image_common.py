@@ -11,10 +11,11 @@ import numpy as np
 from PIL import Image, ImageDraw
 
 from content_aware_timelapse.viderator.viderator_types import (
+    AspectRatio,
     ImageResolution,
+    RectangleRegion,
     RGBInt8ImageType,
     XYPoint,
-    SquareRegion,
 )
 
 LOGGER = logging.getLogger(__name__)
@@ -28,6 +29,30 @@ def image_resolution(image: RGBInt8ImageType) -> ImageResolution:
     """
 
     return ImageResolution(height=image.shape[0], width=image.shape[1])
+
+
+def largest_fitting_region(
+    source_resolution: ImageResolution, aspect_ratio: AspectRatio
+) -> ImageResolution:
+    """
+    Determine the largest region of `source` that fits the input aspect ratio.
+    :param source_resolution: Bounds.
+    :param aspect_ratio: Desired aspect ratio.
+    :return: Largest resolution.
+    """
+
+    # Try width-limited fit
+    scale_w = source_resolution.width / aspect_ratio.width
+    height_if_full_width = aspect_ratio.height * scale_w
+
+    if height_if_full_width <= source_resolution.height:
+        return ImageResolution(source_resolution.width, int(height_if_full_width))
+
+    # Otherwise height-limited fit
+    scale_h = source_resolution.height / aspect_ratio.height
+    width_if_full_height = aspect_ratio.width * scale_h
+
+    return ImageResolution(int(width_if_full_height), source_resolution.height)
 
 
 def load_rgb_image(path: Path) -> RGBInt8ImageType:
@@ -106,6 +131,28 @@ def resize_image_max_side(
     return output
 
 
+def crop_image(
+    image: RGBInt8ImageType, region: RectangleRegion, delete: bool = False
+) -> RGBInt8ImageType:
+    """
+    Crops an image to the given SquareRegion.
+
+    :param image: Input image (H, W, 3) with dtype uint8.
+    :param region: SquareRegion specifying (top, left, bottom, right).
+    :param delete: If true, `del` will be used on `image` to free memory.
+    :return: Cropped image as RGBInt8ImageType.
+    """
+    cropped = cast(
+        RGBInt8ImageType,
+        image[region.top : region.bottom, region.left : region.right],
+    )
+
+    if delete:
+        del image
+
+    return cropped
+
+
 def draw_points_on_image(
     points: List[XYPoint],
     image: RGBInt8ImageType,
@@ -136,7 +183,7 @@ def draw_points_on_image(
 
 
 def draw_regions_on_image(
-    regions: List[SquareRegion],
+    regions: List[RectangleRegion],
     image: RGBInt8ImageType,
     color: Tuple[int, int, int] = (0, 255, 0),
     width: int = 3,

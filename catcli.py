@@ -7,9 +7,8 @@ from pathlib import Path
 from typing import List, Optional
 
 import click
-from tqdm import tqdm
 
-from content_aware_timelapse import cat_pipeline
+from content_aware_timelapse import cat_pipelines
 from content_aware_timelapse.cli_common import create_enum_option
 from content_aware_timelapse.frames_to_vectors.vector_computation.compute_vectors_clip import (
     CONVERT_CLIP,
@@ -20,6 +19,7 @@ from content_aware_timelapse.frames_to_vectors.vector_computation.compute_vector
     CONVERT_SCORE_VIT_CLS,
 )
 from content_aware_timelapse.viderator import video_common
+from content_aware_timelapse.viderator.viderator_types import AspectRatio
 
 LOGGER_FORMAT = "[%(asctime)s - %(process)s - %(name)20s - %(levelname)s] %(message)s"
 LOGGER_DATE_FORMAT = "%Y-%m-%d %H:%M:%S"
@@ -91,15 +91,6 @@ output_fps_arg = click.option(
 
 # Content-aware parameters
 
-batch_size_arg = click.option(
-    "--batch-size",
-    "-b",
-    type=click.IntRange(min=1),
-    help="Frames are sent to GPU for processing in batches of this size.",
-    required=True,
-    default=600,
-    show_default=True,
-)
 
 buffer_size_arg = click.option(
     "--buffer-size",
@@ -151,7 +142,15 @@ def cli() -> None:
 @output_path_arg
 @duration_arg
 @output_fps_arg
-@batch_size_arg
+@click.option(
+    "--batch-size",
+    "-b",
+    type=click.IntRange(min=1),
+    help="Frames are sent to GPU for processing in batches of this size.",
+    required=True,
+    default=600,
+    show_default=True,
+)
 @buffer_size_arg
 @create_enum_option(
     arg_flag="--backend",
@@ -196,7 +195,7 @@ def content(  # pylint: disable=too-many-locals,too-many-positional-arguments
     :return: None
     """
 
-    cat_pipeline.create_uncropped_timelapse(
+    cat_pipelines.create_timelapse_score(
         input_files=input_files,
         output_path=output_path,
         duration=duration,
@@ -212,12 +211,74 @@ def content(  # pylint: disable=too-many-locals,too-many-positional-arguments
 _CONVERSION_POIS_FUNCTIONS_LOOKUP = {VectorBackendPOIs.vit_attention: CONVERT_POIS_VIT_ATTENTION}
 
 
+class AspectRatioParamType(click.ParamType):
+    """
+    Parameter for passing in an aspect ratio.
+    """
+
+    name: str = "aspect-ratio"
+
+    def convert(
+        self,
+        value: str,
+        param: Optional[click.Parameter],
+        ctx: Optional[click.Context],
+    ) -> AspectRatio:
+        """
+
+        :param value:
+        :param param:
+        :param ctx:
+        :return:
+        """
+
+        try:
+            width_str, height_str = str(value).split(":")
+            width = float(width_str)
+            height = float(height_str)
+        except ValueError:
+            self.fail(
+                f"{value!r} is not a valid aspect ratio. Use the format WIDTH:HEIGHT",
+                param,
+                ctx,
+            )
+
+        if width <= 0 or height <= 0:
+            self.fail(
+                f"Aspect ratio values must be positive (got {width}:{height})",
+                param,
+                ctx,
+            )
+
+        return AspectRatio(width=width, height=height)
+
+
+ASPECT_RATIO: AspectRatioParamType = AspectRatioParamType()
+
+
 @cli.command(short_help="Adds content aware cropping at the cost of performance.")
 @input_files_arg
 @output_path_arg
 @duration_arg
 @output_fps_arg
-@batch_size_arg
+@click.option(
+    "--batch-size-pois",
+    "-bp",
+    type=click.IntRange(min=1),
+    help="Frames are sent to GPU for processing in batches of this size.",
+    required=True,
+    default=600,
+    show_default=True,
+)
+@click.option(
+    "--batch-size-scores",
+    "-bs",
+    type=click.IntRange(min=1),
+    help="Frames are sent to GPU for processing in batches of this size.",
+    required=True,
+    default=600,
+    show_default=True,
+)
 @buffer_size_arg
 @create_enum_option(
     arg_flag="--backend-pois",
@@ -230,6 +291,13 @@ _CONVERSION_POIS_FUNCTIONS_LOOKUP = {VectorBackendPOIs.vit_attention: CONVERT_PO
     help_message="Sets which vectorization backend is used.",
     default=VectorBackendScores.vit_cls,
     input_enum=VectorBackendScores,
+)
+@click.option(
+    "--aspect-ratio",
+    "-r",
+    type=ASPECT_RATIO,
+    required=True,
+    help="Aspect ratio in the format WIDTH:HEIGHT (e.g., 16:9, 4:3, 1.85:1).",
 )
 @click.option(
     "--vectors-path-pois",
@@ -251,44 +319,45 @@ def content_cropped(  # pylint: disable=too-many-locals,too-many-positional-argu
     output_path: Path,
     duration: float,
     output_fps: float,
-    batch_size: int,
+    batch_size_pois: int,
+    batch_size_scores: int,
     buffer_size: Optional[int],
     backend_pois: VectorBackendPOIs,
     backend_scores: VectorBackendScores,
+    aspect_ratio: AspectRatio,
     vectors_path_pois: Optional[Path],
     vectors_path_scores: Optional[Path],
     viz_path: Optional[Path],
 ) -> None:
     """
-    Create a timelapse based on the most interesting parts of a video rather than blindly
-    down-selecting frames. Adds cropping to a specific aspect ratio based on the contents of the
-    video.
 
-    \f
-
-    :param input_files: See click docs.
-    :param output_path: See click docs.
-    :param duration: See click docs.
-    :param output_fps: See click docs.
-    :param batch_size: See click docs.
-    :param buffer_size: See click docs.
-    :param backend_pois: See click docs.
-    :param backend_scores: See click docs.
-    :param vectors_path_pois: See click docs.
-    :param vectors_path_scores: See click docs.
-    :param viz_path: See click docs.
-    :return: None
+    :param input_files:
+    :param output_path:
+    :param duration:
+    :param output_fps:
+    :param batch_size_pois:
+    :param batch_size_scores:
+    :param buffer_size:
+    :param backend_pois:
+    :param backend_scores:
+    :param aspect_ratio:
+    :param vectors_path_pois:
+    :param vectors_path_scores:
+    :param viz_path:
+    :return:
     """
 
-    cat_pipeline.create_cropped_timelapse(
+    cat_pipelines.create_timelapse_crop_score(
         input_files=input_files,
         output_path=output_path,
         duration=duration,
         output_fps=output_fps,
-        batch_size=batch_size,
-        buffer_size=buffer_size,
+        batch_size_pois=batch_size_pois,
+        batch_size_scores=batch_size_scores,
+        scaled_frames_buffer_size=buffer_size,
         conversion_pois_functions=_CONVERSION_POIS_FUNCTIONS_LOOKUP[backend_pois],
         conversion_scoring_functions=_CONVERSION_SCORING_FUNCTIONS_LOOKUP[backend_scores],
+        aspect_ratio=aspect_ratio,
         pois_vectors_path=vectors_path_pois,
         scores_vectors_path=vectors_path_scores,
         plot_path=viz_path,
@@ -324,22 +393,18 @@ def classic(  # pylint: disable=too-many-locals
     :return: None
     """
 
-    source_frames = cat_pipeline.load_input_videos(input_files=input_files)
+    source_frames = cat_pipelines.load_input_videos(
+        input_files=input_files, tqdm_desc="Reading Input Frames"
+    )
 
     take_every = int(
         source_frames.total_frame_count
-        / cat_pipeline.calculate_output_frames(duration=duration, output_fps=output_fps)
+        / cat_pipelines.calculate_output_frames(duration=duration, output_fps=output_fps)
     )
 
     video_common.write_source_to_disk_consume(
         source=itertools.islice(
-            tqdm(
-                source_frames.frames,
-                total=source_frames.total_frame_count,
-                unit="Frames",
-                ncols=100,
-                desc="Scoring Images",
-            ),
+            source_frames.frames,
             None,
             None,
             take_every,

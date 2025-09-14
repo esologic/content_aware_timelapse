@@ -379,8 +379,7 @@ def _calculate_scores_vit_attention(packed: Tuple[int, npt.NDArray[np.float16]])
 def _calculate_poi_vit_attention(  # pylint: disable=too-many-locals
     packed: Tuple[int, npt.NDArray[np.float16]],
     original_source_resolution: ImageResolution,
-    num_interesting_points: int = 20,
-    edge_patch_margin: int = 2,  # number of patch rows/cols to skip around the edges
+    num_interesting_points: int,
 ) -> IndexPointsOfInterest:
     """
     Calculate attention-based scalar scores + top-K interesting points, excluding edge patches.
@@ -422,15 +421,6 @@ def _calculate_poi_vit_attention(  # pylint: disable=too-many-locals
 
         for idx in top_indices:
             gx, gy = idx % grid_size, idx // grid_size
-
-            # Skip patches within edge margin
-            if (
-                gx < edge_patch_margin
-                or gx >= grid_size - edge_patch_margin
-                or gy < edge_patch_margin
-                or gy >= grid_size - edge_patch_margin
-            ):
-                continue
 
             # Map to ViT grid
             x_vit = (gx + 0.5) * (VIT_SIDE_LENGTH / grid_size)

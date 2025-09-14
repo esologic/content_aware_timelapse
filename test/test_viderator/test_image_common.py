@@ -1,0 +1,68 @@
+"""
+Test of common image math and manipulation functions.
+"""
+
+import pytest
+
+from content_aware_timelapse.viderator import image_common
+from content_aware_timelapse.viderator.viderator_types import AspectRatio, ImageResolution
+
+
+@pytest.mark.parametrize(
+    "source, ratio, expected",
+    [
+        # Fits perfectly (16:9 inside 1920x1080)
+        (
+            ImageResolution(1920, 1080),
+            AspectRatio(16, 9),
+            ImageResolution(1920, 1080),
+        ),
+        # Cropped width (4:3 inside 1920x1080)
+        (
+            ImageResolution(1920, 1080),
+            AspectRatio(4, 3),
+            ImageResolution(1440, 1080),
+        ),
+        # Cropped height (16:9 inside 1200x1600)
+        (
+            ImageResolution(1200, 1600),
+            AspectRatio(16, 9),
+            ImageResolution(1200, 675),
+        ),
+        # Square ratio inside widescreen
+        (
+            ImageResolution(1920, 1080),
+            AspectRatio(1, 1),
+            ImageResolution(1080, 1080),
+        ),
+        # Square ratio inside tall portrait
+        (
+            ImageResolution(800, 1200),
+            AspectRatio(1, 1),
+            ImageResolution(800, 800),
+        ),
+        # Portrait 9:16 inside 1920x1080 (width limited)
+        (
+            ImageResolution(1920, 1080),
+            AspectRatio(9, 16),
+            ImageResolution(607, 1080),
+        ),
+        # Portrait 9:16 inside 1200x1600 (height limited)
+        (
+            ImageResolution(1200, 1600),
+            AspectRatio(9, 16),
+            ImageResolution(900, 1600),
+        ),
+    ],
+)
+def test_largest_fitting_region(
+    source: ImageResolution, ratio: AspectRatio, expected: ImageResolution
+) -> None:
+    """
+    Smoke test of the function.
+    :param source: Input.
+    :param ratio: Input.
+    :param expected: Expected output.
+    :return: None
+    """
+    assert image_common.largest_fitting_region(source, ratio) == expected

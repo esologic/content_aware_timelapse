@@ -2,15 +2,28 @@
 Turn vectorized images to numerical scores, then pick the best images for the output.
 """
 
+import itertools
+import logging
 from pathlib import Path
-from typing import List, Optional
+from typing import Iterator, List, Optional, Set
 
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
+from numpy import typing as npt
 from sklearn import preprocessing
+from tqdm import tqdm
 
-from content_aware_timelapse.frames_to_vectors.conversion_types import IndexScores, ScoreWeights
+from content_aware_timelapse.frames_to_vectors import conversion
+from content_aware_timelapse.frames_to_vectors.conversion_types import (
+    ConversionScoringFunctions,
+    IndexScores,
+    ScoreWeights,
+)
+from content_aware_timelapse.viderator import video_common
+from content_aware_timelapse.viderator.viderator_types import ImageSourceType
+
+LOGGER = logging.getLogger(__name__)
 
 
 def _apply_radius_deselection(
@@ -175,4 +188,95 @@ def select_frames(
             num_output_frames=num_output_frames,
             plot_path=plot_path,
         )
+    )
+
+
+def reduce_frames_by_score(  # pylint: disable=too-many-arguments, too-many-positional-arguments, too-many-locals
+    scoring_frames: ImageSourceType,
+    output_frames: ImageSourceType,
+    source_frame_count: int,
+    input_signature: str,
+    output_path: Path,
+    num_output_frames: int,
+    output_fps: float,
+    batch_size: int,
+    conversion_scoring_functions: ConversionScoringFunctions,
+    vectors_path: Optional[Path],
+    plot_path: Optional[Path],
+) -> ImageSourceType:
+    """
+
+    :param scoring_frames:
+    :param output_frames:
+    :param source_frame_count:
+    :param input_signature:
+    :param output_path:
+    :param num_output_frames:
+    :param output_fps:
+    :param batch_size:
+    :param conversion_scoring_functions:
+    :param vectors_path:
+    :param plot_path:
+    :return:
+    """
+
+    vectors: Iterator[npt.NDArray[np.float16]] = conversion.frames_to_vectors(
+        frames=scoring_frames,
+        intermediate_path=vectors_path,
+        input_signature=input_signature,
+        batch_size=batch_size,
+        total_input_frames=source_frame_count,
+        convert_batches=conversion_scoring_functions.conversion,
+    )
+
+    LOGGER.debug("Starting to sort output vectors by score.")
+
+    score_indexes: List[IndexScores] = list(
+        map(
+            conversion_scoring_functions.scoring,
+            tqdm(
+                enumerate(vectors),
+                total=source_frame_count,
+                unit="Frames",
+                ncols=100,
+                desc="Scoring Images",
+                maxinterval=1,
+            ),
+        )
+    )
+
+    most_interesting_indices: Set[int] = set(
+        select_frames(
+            score_weights=conversion_scoring_functions.weights,
+            index_scores=score_indexes,
+            num_output_frames=num_output_frames,
+            plot_path=plot_path,
+        )
+    )
+
+    final_frame_index: int = max(most_interesting_indices)
+
+    # Slice the frames to include the frame at final_frame_index
+    # Ensure the frame at final_frame_index is included, the plus one.
+    sliced_frames: ImageSourceType = itertools.islice(output_frames, None, final_frame_index + 1)
+
+    most_interesting_frames: ImageSourceType = (
+        index_frame[1]
+        for index_frame in filter(
+            lambda index_frame: index_frame[0] in most_interesting_indices,
+            tqdm(
+                enumerate(sliced_frames),
+                total=final_frame_index + 1,
+                unit="Frames",
+                ncols=100,
+                desc="Reading best frames for output",
+            ),
+        )
+    )
+
+    return video_common.write_source_to_disk_forward(
+        source=most_interesting_frames,
+        video_path=output_path,
+        video_fps=output_fps,
+        high_quality=False,
     )
