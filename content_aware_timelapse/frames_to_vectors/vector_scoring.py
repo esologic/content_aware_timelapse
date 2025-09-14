@@ -182,22 +182,28 @@ def reduce_frames_by_score(  # pylint: disable=too-many-arguments, too-many-posi
     plot_path: Optional[Path],
 ) -> ImageSourceType:
     """
+    Uses input scoring function to reduce the input frames to the desired count by selecting
+    the highest scoring frames.
 
-    :param scoring_frames:
-    :param output_frames:
-    :param source_frame_count:
-    :param input_signature:
-    :param output_path:
-    :param num_output_frames:
-    :param output_fps:
-    :param batch_size:
-    :param conversion_scoring_functions:
+    :param scoring_frames: These frames are fed to the GPU via the conversion function and will
+    likely be scaled down. Pre-scaled and buffered images should be passed here to avoid waiting
+    around.
+    :param output_frames: These are the frames that are actually cropped and forwarded in the
+    output.
+    :param source_frame_count: Number of frames in the input.
+    :param intermediate_info: If given, vectors will be written to disk for faster
+    re-runs.
+    :param output_path: Desired output location of the video.
+    :param num_output_frames: Number of frames to select.
+    :param output_fps: Set as the FPS of the output video.
+    :param batch_size: Number of scaled input images to send to the GPU at once.
+    :param conversion_scoring_functions: Functions to compute vectors then score them.
     :param deselection_radius_frames: Frames surrounding high scoring frames removed to
     prevent clustering. This is the number of frames before/after a high scoring one that are
     slightly decreased in score.
-    :param vectors_path:
-    :param plot_path:
-    :return:
+    :param plot_path: If given, a visualization of the math that went into scores will be written
+    to this path.
+    :return: Selected frames.
     """
 
     vectors: Iterator[npt.NDArray[np.float16]] = conversion.frames_to_vectors(

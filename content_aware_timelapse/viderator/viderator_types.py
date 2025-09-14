@@ -46,7 +46,7 @@ class AspectRatio(NamedTuple):
 
 class RectangleRegion(NamedTuple):
     """
-    Standard
+    Standard NT for defining a rectangular area of an image.
     """
 
     top: int

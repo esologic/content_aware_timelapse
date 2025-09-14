@@ -39,9 +39,8 @@ def test_crop_to_pois_visualization_check(pois_functions: ConversionPOIsFunction
         drawing_frames=visualization_frames,
         intermediate_info=None,
         batch_size=100,
-        total_input_frames=video_frames.total_frame_count,
-        convert=pois_functions.conversion,
-        compute=pois_functions.compute_pois,
+        source_frame_count=video_frames.total_frame_count,
+        conversion_pois_functions=pois_functions,
         original_resolution=video_frames.original_resolution,
         crop_resolution=ImageResolution(500, 500),
     )

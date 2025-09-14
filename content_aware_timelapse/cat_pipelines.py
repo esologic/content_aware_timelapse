@@ -151,27 +151,19 @@ def create_timelapse_score(  # pylint: disable=too-many-locals,too-many-position
     plot_path: Optional[Path],
 ) -> None:
     """
-    Main function to create the timelapse, defines the video processing pipeline.
+    Library backend for the UI function. See docs in `reduce_frames_by_score` or docs in click
+    CLI function for reference.
 
-    :param input_files: Videos from user to convert.
-    :param output_path: Path to write the resulting output video to.
-    :param duration: Desired duration for the output video in seconds.
-    :param output_fps: Desired output video fps.
-    :param batch_size: The number of frames from the input video to vectorize at once. The
-    vectorization functions are responsible for doing the parallel loads onto the GPU.
-    :param buffer_size: The number of frames to load into an in-memory buffer. This makes sure
-    the GPUs have fast access to more frames rather than have the GPU waiting on disk/network IO.
-    :param conversion_scoring_functions: A tuple of callables that contain the vectorization
-    function and the function to score those vectors. Lets us swap the backend between different
-    CV processes.
-    :param deselection_radius_frames: Frames surrounding high scoring frames removed to
-    prevent clustering. This is the number of frames before/after a high scoring one that are
-    slightly decreased in score.
-    :param vectors_path: Path to the vectors file. This file is an on-disk copy of each of the
-    vectorization results for the input frames. This lets us recover from a run that has to be
-    ended early, or lets us re-run selection without having to burn more compute.
-    :param plot_path: If given, a visualization of the selection process is written to this file
-    to aid in debugging.
+    :param input_files: See docs in library or click.
+    :param output_path: See docs in library or click.
+    :param duration: See docs in library or click.
+    :param output_fps: See docs in library or click.
+    :param batch_size: See docs in library or click.
+    :param buffer_size: See docs in library or click.
+    :param conversion_scoring_functions: See docs in library or click.
+    :param deselection_radius_frames: See docs in library or click.
+    :param vectors_path: See docs in library or click.
+    :param plot_path: See docs in library or click.
     :return: None
     """
 
@@ -228,24 +220,25 @@ def create_timelapse_crop_score(  # pylint: disable=too-many-locals,too-many-pos
     plot_path: Optional[Path],
 ) -> None:
     """
+    Library backend for the UI function. See docs in `reduce_frames_by_score`, `crop_to_pois` or
+    docs in click CLI function for complete reference.
 
-    :param input_files:
-    :param output_path:
-    :param duration:
-    :param output_fps:
-    :param batch_size_pois:
-    :param batch_size_scores:
-    :param scaled_frames_buffer_size:
-    :param conversion_pois_functions:
-    :param conversion_scoring_functions:
-    :param aspect_ratio:
-    :param pois_vectors_path:
-    :param scores_vectors_path:
-    :param plot_path:
-    :return:
+    :param input_files: See docs in library or click.
+    :param output_path: See docs in library or click.
+    :param duration: See docs in library or click.
+    :param output_fps: See docs in library or click.
+    :param batch_size_pois: See docs in library or click.
+    :param batch_size_scores: See docs in library or click.
+    :param scaled_frames_buffer_size: See docs in library or click.
+    :param conversion_pois_functions: See docs in library or click.
+    :param conversion_scoring_functions: See docs in library or click.
+    :param aspect_ratio: See docs in library or click.
+    :param scoring_deselection_radius_frames: See docs in library or click.
+    :param pois_vectors_path: See docs in library or click.
+    :param scores_vectors_path: See docs in library or click.
+    :param plot_path: See docs in library or click.
+    :return: None
     """
-
-    input_signature_pois = create_videos_signature(video_paths=input_files, modifications_salt=None)
 
     source = load_input_videos(input_files=input_files, tqdm_desc="Reading POI Frames")
 
@@ -282,9 +275,8 @@ def create_timelapse_crop_score(  # pylint: disable=too-many-locals,too-many-pos
             else None
         ),
         batch_size=batch_size_pois,
-        total_input_frames=pois_frames_count_resolution.total_frame_count,
-        convert=conversion_pois_functions.conversion,
-        compute=conversion_pois_functions.compute_pois,
+        source_frame_count=pois_frames_count_resolution.total_frame_count,
+        conversion_pois_functions=conversion_pois_functions,
         original_resolution=pois_frames_count_resolution.original_resolution,
         crop_resolution=crop_resolution,
     )

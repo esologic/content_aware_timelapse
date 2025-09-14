@@ -1,11 +1,13 @@
 # Changelog
 
-0.8.0 - (2025-09-??)
+0.8.0 - (2025-09-14)
 ------------------
 
+* Introduced a new CLI command, `content-cropped` that uses POI analysis to pick the most 
+interesting region of a given aspect ratio to crop the output to. Down-sampling on score also 
+occurs.
+* Reorganized project a bit to support this new mode.
 * Fixed bug in buffer where frames would not flow if the buffer was larger than the input frames.
-* Introduced `interesting_points` field to `IndexScores` to be able to find per-frame intersting
-points in service of auto-cropping.
 
 
 0.7.0 - (2025-09-07)

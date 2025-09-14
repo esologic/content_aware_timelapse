@@ -91,7 +91,6 @@ output_fps_arg = click.option(
 
 # Content-aware parameters
 
-
 buffer_size_arg = click.option(
     "--buffer-size",
     "-b",
@@ -242,11 +241,11 @@ class AspectRatioParamType(click.ParamType):
         ctx: Optional[click.Context],
     ) -> AspectRatio:
         """
-
-        :param value:
-        :param param:
-        :param ctx:
-        :return:
+        Converts input string to namedtuple.
+        :param value: To convert.
+        :param param: Only consumed in error state.
+        :param ctx: Only consumed in error state.
+        :return: Parsed type.
         """
 
         try:

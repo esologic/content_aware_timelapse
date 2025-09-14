@@ -41,7 +41,6 @@ def frames_to_vectors(  # pylint:disable=too-many-positional-arguments
     :param frames: Frames to process.
     :param intermediate_info: Describes the intermediate vector file, if not given it will not
     be used.
-    intermediate vectors from the input file.
     :param batch_size: Number of frames to process at once. Should try to utilize all GPU memory.
     :param total_input_frames: Number of frames in `frames`.
     :param convert_batches: Function for going from a batch of images to vectors.

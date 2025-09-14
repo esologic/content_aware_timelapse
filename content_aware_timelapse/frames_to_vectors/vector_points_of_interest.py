@@ -13,9 +13,8 @@ from tqdm import tqdm
 from content_aware_timelapse.frames_to_vectors import conversion
 from content_aware_timelapse.frames_to_vectors.conversion import IntermediateFileInfo
 from content_aware_timelapse.frames_to_vectors.conversion_types import (
-    ConvertBatchesFunction,
+    ConversionPOIsFunctions,
     IndexPointsOfInterest,
-    ScorePOIsFunction,
 )
 from content_aware_timelapse.viderator import image_common, video_common
 from content_aware_timelapse.viderator.viderator_types import (
@@ -214,9 +213,8 @@ def crop_to_pois(  # pylint: disable=too-many-arguments,too-many-positional-argu
     drawing_frames: Optional[ImageSourceType],
     intermediate_info: Optional[IntermediateFileInfo],
     batch_size: int,
-    total_input_frames: int,
-    convert: ConvertBatchesFunction,
-    compute: ScorePOIsFunction,
+    source_frame_count: int,
+    conversion_pois_functions: ConversionPOIsFunctions,
     original_resolution: ImageResolution,
     crop_resolution: ImageResolution,
 ) -> POICropResult:
@@ -236,32 +234,36 @@ def crop_to_pois(  # pylint: disable=too-many-arguments,too-many-positional-argu
     :param drawing_frames: Should be another copy of `output_frames` that is consumed in
     visualization. If this is not given the `visualization` field in the output will also
     be None.
-    :param intermediate_info: Describes the vectors file if given.
-    :param batch_size:
-    :param total_input_frames:
-    :param convert:
-    :param compute:
-    :param original_resolution:
-    :param crop_resolution:
-    :return:
+    :param intermediate_info: If given, attention map vectors will be written to disk for faster
+    re-runs.
+    :param batch_size: Number of scaled input images to send to the GPU at once.
+    :param source_frame_count: Number of frames in the input.
+    :param conversion_pois_functions: Conversion POIs functions to compute and derive POIs from
+    input frames.
+    :param original_resolution: Resolution of the source.
+    :param crop_resolution: Desired resolution to crop to.
+    :return: Output NT. Contains the region, the cropped output iterator and the visualization
+    iterator.
     """
 
     vectors_for_pois: Iterator[npt.NDArray[np.float16]] = conversion.frames_to_vectors(
         frames=analysis_frames,
         intermediate_info=intermediate_info,
         batch_size=batch_size,
-        total_input_frames=total_input_frames,
-        convert_batches=convert,
+        total_input_frames=source_frame_count,
+        convert_batches=conversion_pois_functions.conversion,
     )
 
     points_of_interest: List[IndexPointsOfInterest] = list(
         map(
             partial(
-                compute, original_source_resolution=original_resolution, num_interesting_points=30
+                conversion_pois_functions.compute_pois,
+                original_source_resolution=original_resolution,
+                num_interesting_points=30,
             ),
             tqdm(
                 enumerate(vectors_for_pois),
-                total=total_input_frames,
+                total=source_frame_count,
                 unit="Frames",
                 ncols=100,
                 desc="Discovering POIs",
@@ -303,10 +305,10 @@ def crop_to_pois(  # pylint: disable=too-many-arguments,too-many-positional-argu
             frame: RGBInt8ImageType, frame_pois: IndexPointsOfInterest
         ) -> RGBInt8ImageType:
             """
-
-            :param frame:
-            :param frame_pois:
-            :return:
+            Draw visualization info onto the frame.
+            :param frame: To modify.
+            :param frame_pois: To draw onto the image.
+            :return: Viz frame.
             """
 
             return image_common.draw_regions_on_image(
