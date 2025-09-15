@@ -242,31 +242,31 @@ def create_timelapse_crop_score(  # pylint: disable=too-many-locals,too-many-pos
     :return: None
     """
 
-    source = load_input_videos(input_files=input_files, tqdm_desc="Reading POI Frames")
-
-    original_frames_for_poi_analysis, original_frames_for_poi_cropping = (
-        iterator_on_disk.tee_disk_cache(
-            iterator=source.frames, copies=1, serializer=iterator_on_disk.HDF5_COMPRESSED_SERIALIZER
-        )
-    )
-
-    pois_frames_count_resolution = preload_and_scale(
-        frames_count_resolution=_FramesCountResolution(
-            frames=original_frames_for_poi_analysis,
-            total_frame_count=source.total_frame_count,
-            original_resolution=source.original_resolution,
-        ),
-        max_side_length=conversion_pois_functions.max_side_length,
-        buffer_size=scaled_frames_buffer_size,
-    )
+    primary_source = load_input_videos(input_files=input_files, tqdm_desc="Reading POI Frames")
 
     crop_resolution = image_common.largest_fitting_region(
-        source_resolution=source.original_resolution, aspect_ratio=aspect_ratio
+        source_resolution=primary_source.original_resolution, aspect_ratio=aspect_ratio
     )
 
+    # Input video is read twice, this could be optimized.
+
     poi_crop_result: POICropResult = crop_to_pois(
-        analysis_frames=pois_frames_count_resolution.frames,
-        output_frames=original_frames_for_poi_cropping,
+        analysis_frames=preload_and_scale(
+            frames_count_resolution=_FramesCountResolution(
+                frames=primary_source.frames,
+                total_frame_count=primary_source.total_frame_count,
+                original_resolution=primary_source.original_resolution,
+            ),
+            max_side_length=conversion_pois_functions.max_side_length,
+            buffer_size=scaled_frames_buffer_size,
+        ).frames,
+        output_frames=preload_and_scale(
+            frames_count_resolution=load_input_videos(
+                input_files=input_files, tqdm_desc="Reading Crop Output Frames"
+            ),
+            max_side_length=conversion_pois_functions.max_side_length,
+            buffer_size=scaled_frames_buffer_size,
+        ).frames,
         drawing_frames=None,
         intermediate_info=(
             IntermediateFileInfo(
@@ -277,9 +277,9 @@ def create_timelapse_crop_score(  # pylint: disable=too-many-locals,too-many-pos
             else None
         ),
         batch_size=batch_size_pois,
-        source_frame_count=pois_frames_count_resolution.total_frame_count,
+        source_frame_count=primary_source.total_frame_count,
         conversion_pois_functions=conversion_pois_functions,
-        original_resolution=pois_frames_count_resolution.original_resolution,
+        original_resolution=primary_source.original_resolution,
         crop_resolution=crop_resolution,
     )
 
@@ -298,7 +298,7 @@ def create_timelapse_crop_score(  # pylint: disable=too-many-locals,too-many-pos
     scoring_frames_count_resolution = preload_and_scale(
         frames_count_resolution=_FramesCountResolution(
             frames=cropped_frames_for_scoring,
-            total_frame_count=pois_frames_count_resolution.total_frame_count,
+            total_frame_count=primary_source.total_frame_count,
             original_resolution=crop_resolution,
         ),
         max_side_length=conversion_scoring_functions.max_side_length,
@@ -308,7 +308,7 @@ def create_timelapse_crop_score(  # pylint: disable=too-many-locals,too-many-pos
     output_frames_count_resolution = preload_and_scale(
         frames_count_resolution=_FramesCountResolution(
             frames=cropped_frames_for_output,
-            total_frame_count=pois_frames_count_resolution.total_frame_count,
+            total_frame_count=primary_source.total_frame_count,
             original_resolution=crop_resolution,
         ),
         max_side_length=None,  # Don't scale the output frames.
@@ -319,7 +319,7 @@ def create_timelapse_crop_score(  # pylint: disable=too-many-locals,too-many-pos
         reduce_frames_by_score(
             scoring_frames=scoring_frames_count_resolution.frames,
             output_frames=output_frames_count_resolution.frames,
-            source_frame_count=pois_frames_count_resolution.total_frame_count,
+            source_frame_count=primary_source.total_frame_count,
             intermediate_info=(
                 IntermediateFileInfo(
                     path=scores_vectors_path,
