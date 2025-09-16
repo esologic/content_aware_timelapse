@@ -42,13 +42,14 @@ def _write_video_with_audio(video_path: Path, audio: FilterableStream, output_pa
     """
     ffmpeg.run(
         ffmpeg.output(
-            ffmpeg.input(str(video_path)).video,  # get only video channel
-            audio,  # get only audio channel
+            ffmpeg.input(str(video_path)).video,
+            audio,
             str(output_path),
             vcodec="copy",
-            acodec="flac",
-            audio_bitrate=200,
+            acodec="aac",
+            audio_bitrate="192k",
             strict="experimental",
+            shortest=None,  # <- important!
         ),
         quiet=True,
         overwrite_output=True,
@@ -310,7 +311,7 @@ def write_source_to_disk_forward(
             writer.release()
 
     try:
-        if audio_paths is None:
+        if audio_paths:
             yield from setup_iteration(video_path)
         else:
             # Don't write the video-only file to disk at the output path, instead
@@ -452,10 +453,11 @@ def display_frame_forward_opencv(
 
 def crop_source(source: ImageSourceType, region: RectangleRegion) -> ImageSourceType:
     """
-
-    :param source:
-    :param region:
-    :return:
+    Crop all frames in a source to a given region.
+    :param source: To crop.
+    :param region: Region to crop to, this is an absolute region in the input frame, not a general
+    resolution.
+    :return: Cropped frames.
     """
 
     yield from (

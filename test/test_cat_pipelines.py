@@ -4,7 +4,7 @@ End-to-end tests of timelapse creation.
 
 from datetime import datetime
 from pathlib import Path
-from test.assets import LONG_TEST_VIDEO_PATH, SAMPLE_TIMELAPSE_INPUT_PATH
+from test.assets import LONG_TEST_VIDEO_PATH, SAMPLE_AUDIO_PATH, SAMPLE_TIMELAPSE_INPUT_PATH
 
 import pytest
 
@@ -61,6 +61,7 @@ def test_create_timelapse_score(
         plot_path=None,
         buffer_size=buffer_size,
         deselection_radius_frames=10,
+        audio_paths=[SAMPLE_AUDIO_PATH],
     )
 
     video_frames = frames_in_video.frames_in_video_opencv(
@@ -109,6 +110,7 @@ def test_create_timelapse_score_output(
         plot_path=None,
         buffer_size=0,
         deselection_radius_frames=10,
+        audio_paths=[SAMPLE_AUDIO_PATH],
     )
 
     video_frames = frames_in_video.frames_in_video_opencv(
@@ -128,7 +130,7 @@ def test_create_timelapse_crop_score(
     :return: None
     """
 
-    output_path = Path(tmpdir) / "output.mp4"
+    output_path = Path("./") / "output.mp4"
     pois_vectors_path = Path(tmpdir) / "pios_vectors.hdf5"
     scores_vectors_path = Path(tmpdir) / "scores_vectors.hdf5"
 
@@ -150,6 +152,7 @@ def test_create_timelapse_crop_score(
         scaled_frames_buffer_size=100,
         conversion_pois_functions=CONVERT_POIS_VIT_ATTENTION,
         conversion_scoring_functions=CONVERT_SCORE_VIT_CLS,
+        audio_paths=[SAMPLE_AUDIO_PATH],
     )
 
     video_frames = frames_in_video.frames_in_video_opencv(

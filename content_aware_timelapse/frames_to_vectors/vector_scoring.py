@@ -12,7 +12,6 @@ import numpy as np
 import pandas as pd
 from numpy import typing as npt
 from sklearn import preprocessing
-from tqdm import tqdm
 
 from content_aware_timelapse.frames_to_vectors import conversion
 from content_aware_timelapse.frames_to_vectors.conversion import IntermediateFileInfo
@@ -179,6 +178,7 @@ def reduce_frames_by_score(  # pylint: disable=too-many-arguments, too-many-posi
     batch_size: int,
     conversion_scoring_functions: ConversionScoringFunctions,
     deselection_radius_frames: int,
+    audio_paths: List[Path],
     plot_path: Optional[Path],
 ) -> ImageSourceType:
     """
@@ -201,6 +201,7 @@ def reduce_frames_by_score(  # pylint: disable=too-many-arguments, too-many-posi
     :param deselection_radius_frames: Frames surrounding high scoring frames removed to
     prevent clustering. This is the number of frames before/after a high scoring one that are
     slightly decreased in score.
+    :param audio_paths: If given, the audio files will be written to the output video.
     :param plot_path: If given, a visualization of the math that went into scores will be written
     to this path.
     :return: Selected frames.
@@ -219,14 +220,7 @@ def reduce_frames_by_score(  # pylint: disable=too-many-arguments, too-many-posi
     score_indexes: List[IndexScores] = list(
         map(
             conversion_scoring_functions.scoring,
-            tqdm(
-                enumerate(vectors),
-                total=source_frame_count,
-                unit="Frames",
-                ncols=100,
-                desc="Scoring Images",
-                maxinterval=1,
-            ),
+            enumerate(vectors),
         )
     )
 
@@ -252,13 +246,7 @@ def reduce_frames_by_score(  # pylint: disable=too-many-arguments, too-many-posi
         index_frame[1]
         for index_frame in filter(
             lambda index_frame: index_frame[0] in most_interesting_indices,
-            tqdm(
-                enumerate(sliced_frames),
-                total=final_frame_index + 1,
-                unit="Frames",
-                ncols=100,
-                desc="Reading best frames for output",
-            ),
+            enumerate(sliced_frames),
         )
     )
 
@@ -266,5 +254,6 @@ def reduce_frames_by_score(  # pylint: disable=too-many-arguments, too-many-posi
         source=most_interesting_frames,
         video_path=output_path,
         video_fps=output_fps,
+        audio_paths=audio_paths,
         high_quality=False,
     )

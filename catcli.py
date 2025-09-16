@@ -124,6 +124,16 @@ deselect_arg = click.option(
     help="Frames surrounding high scores will be dropped by a radius that starts with this value.",
     required=False,
     default=1000,
+    show_default=True,
+)
+
+audio_paths_arg = click.option(
+    "--audio",
+    "-a",
+    type=click.Path(file_okay=True, exists=True, dir_okay=False, writable=True, path_type=Path),
+    help="If given, these audio(s) will be added to the resulting video.",
+    required=False,
+    multiple=True,
 )
 
 
@@ -172,6 +182,7 @@ def cli() -> None:
     input_enum=VectorBackendScores,
 )
 @deselect_arg
+@audio_paths_arg
 @click.option(
     "--vectors-path",
     "-v",
@@ -180,7 +191,7 @@ def cli() -> None:
     required=False,
 )
 @viz_path_arg
-def content(  # pylint: disable=too-many-locals,too-many-positional-arguments
+def content(  # pylint: disable=too-many-locals,too-many-positional-arguments,too-many-arguments
     input_files: List[Path],
     output_path: Path,
     duration: float,
@@ -189,6 +200,7 @@ def content(  # pylint: disable=too-many-locals,too-many-positional-arguments
     buffer_size: Optional[int],
     backend: VectorBackendScores,
     deselect: int,
+    audio: List[Path],
     vectors_path: Optional[Path],
     viz_path: Optional[Path],
 ) -> None:
@@ -205,6 +217,7 @@ def content(  # pylint: disable=too-many-locals,too-many-positional-arguments
     :param buffer_size: See click docs.
     :param backend: See click docs.
     :param deselect: See click docs.
+    :param audio: See click docs.
     :param vectors_path: See click docs.
     :param viz_path: See click docs.
     :return: None
@@ -219,6 +232,7 @@ def content(  # pylint: disable=too-many-locals,too-many-positional-arguments
         buffer_size=buffer_size,
         conversion_scoring_functions=_CONVERSION_SCORING_FUNCTIONS_LOOKUP[backend],
         deselection_radius_frames=deselect,
+        audio_paths=audio,
         vectors_path=vectors_path,
         plot_path=viz_path,
     )
@@ -324,6 +338,7 @@ ASPECT_RATIO: AspectRatioParamType = AspectRatioParamType()
     help="Aspect ratio in the format WIDTH:HEIGHT (e.g., 16:9, 4:3, 1.85:1).",
 )
 @deselect_arg
+@audio_paths_arg
 @click.option(
     "--vectors-path-pois",
     "-vp",
@@ -351,6 +366,7 @@ def content_cropped(  # pylint: disable=too-many-locals,too-many-positional-argu
     backend_scores: VectorBackendScores,
     aspect_ratio: AspectRatio,
     deselect: int,
+    audio: List[Path],
     vectors_path_pois: Optional[Path],
     vectors_path_scores: Optional[Path],
     viz_path: Optional[Path],
@@ -371,6 +387,7 @@ def content_cropped(  # pylint: disable=too-many-locals,too-many-positional-argu
     :param backend_scores: See click docs.
     :param aspect_ratio: See click docs.
     :param deselect: See click docs.
+    :param audio: See click docs.
     :param vectors_path_pois: See click docs.
     :param vectors_path_scores: See click docs.
     :param viz_path: See click docs.
@@ -389,6 +406,7 @@ def content_cropped(  # pylint: disable=too-many-locals,too-many-positional-argu
         conversion_scoring_functions=_CONVERSION_SCORING_FUNCTIONS_LOOKUP[backend_scores],
         aspect_ratio=aspect_ratio,
         scoring_deselection_radius_frames=deselect,
+        audio_paths=audio,
         pois_vectors_path=vectors_path_pois,
         scores_vectors_path=vectors_path_scores,
         plot_path=viz_path,
@@ -405,11 +423,13 @@ def content_cropped(  # pylint: disable=too-many-locals,too-many-positional-argu
 @output_path_arg
 @duration_arg
 @output_fps_arg
+@audio_paths_arg
 def classic(  # pylint: disable=too-many-locals
     input_files: List[Path],
     output_path: Path,
     duration: float,
     output_fps: float,
+    audio: List[Path],
 ) -> None:
     """
     Evenly down-selects the input, taking every N frames until the desired output length is reached.
@@ -421,6 +441,7 @@ def classic(  # pylint: disable=too-many-locals
     :param output_path: See click docs.
     :param duration: See click docs.
     :param output_fps: See click docs.
+    :param audio: See click docs.
     :return: None
     """
 
@@ -443,8 +464,9 @@ def classic(  # pylint: disable=too-many-locals
         video_path=output_path,
         video_fps=output_fps,
         high_quality=True,
+        audio_paths=audio,
     )
 
 
 if __name__ == "__main__":
-    cli()  # pylint: disable=no-value-for-parameter
+    cli()  # pylint: disable=

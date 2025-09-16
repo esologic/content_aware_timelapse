@@ -140,7 +140,7 @@ def preload_and_scale(
     )
 
 
-def create_timelapse_score(  # pylint: disable=too-many-locals,too-many-positional-arguments
+def create_timelapse_score(  # pylint: disable=too-many-locals,too-many-positional-arguments,too-many-arguments
     input_files: List[Path],
     output_path: Path,
     duration: float,
@@ -149,6 +149,7 @@ def create_timelapse_score(  # pylint: disable=too-many-locals,too-many-position
     buffer_size: int,
     conversion_scoring_functions: ConversionScoringFunctions,
     deselection_radius_frames: int,
+    audio_paths: List[Path],
     vectors_path: Optional[Path],
     plot_path: Optional[Path],
 ) -> None:
@@ -164,6 +165,7 @@ def create_timelapse_score(  # pylint: disable=too-many-locals,too-many-position
     :param buffer_size: See docs in library or click.
     :param conversion_scoring_functions: See docs in library or click.
     :param deselection_radius_frames: See docs in library or click.
+    :param audio_paths: See docs in library or click.
     :param vectors_path: See docs in library or click.
     :param plot_path: See docs in library or click.
     :return: None
@@ -200,6 +202,7 @@ def create_timelapse_score(  # pylint: disable=too-many-locals,too-many-position
             batch_size=batch_size,
             conversion_scoring_functions=conversion_scoring_functions,
             deselection_radius_frames=deselection_radius_frames,
+            audio_paths=audio_paths,
             plot_path=plot_path,
         )
     )
@@ -217,6 +220,7 @@ def create_timelapse_crop_score(  # pylint: disable=too-many-locals,too-many-pos
     conversion_scoring_functions: ConversionScoringFunctions,
     aspect_ratio: AspectRatio,
     scoring_deselection_radius_frames: int,
+    audio_paths: List[Path],
     pois_vectors_path: Optional[Path],
     scores_vectors_path: Optional[Path],
     plot_path: Optional[Path],
@@ -236,6 +240,7 @@ def create_timelapse_crop_score(  # pylint: disable=too-many-locals,too-many-pos
     :param conversion_scoring_functions: See docs in library or click.
     :param aspect_ratio: See docs in library or click.
     :param scoring_deselection_radius_frames: See docs in library or click.
+    :param audio_paths: See docs in library or click.
     :param pois_vectors_path: See docs in library or click.
     :param scores_vectors_path: See docs in library or click.
     :param plot_path: See docs in library or click.
@@ -264,7 +269,7 @@ def create_timelapse_crop_score(  # pylint: disable=too-many-locals,too-many-pos
             frames_count_resolution=load_input_videos(
                 input_files=input_files, tqdm_desc="Reading Crop Output Frames"
             ),
-            max_side_length=conversion_pois_functions.max_side_length,
+            max_side_length=None,  # Don't scale the output frames.
             buffer_size=scaled_frames_buffer_size,
         ).frames,
         drawing_frames=None,
@@ -295,30 +300,32 @@ def create_timelapse_crop_score(  # pylint: disable=too-many-locals,too-many-pos
         serializer=iterator_on_disk.HDF5_COMPRESSED_SERIALIZER,
     )
 
-    scoring_frames_count_resolution = preload_and_scale(
-        frames_count_resolution=_FramesCountResolution(
-            frames=cropped_frames_for_scoring,
-            total_frame_count=primary_source.total_frame_count,
-            original_resolution=crop_resolution,
-        ),
-        max_side_length=conversion_scoring_functions.max_side_length,
-        buffer_size=scaled_frames_buffer_size,
-    )
-
-    output_frames_count_resolution = preload_and_scale(
-        frames_count_resolution=_FramesCountResolution(
-            frames=cropped_frames_for_output,
-            total_frame_count=primary_source.total_frame_count,
-            original_resolution=crop_resolution,
-        ),
-        max_side_length=None,  # Don't scale the output frames.
-        buffer_size=0,  # Could buffer here but these are the full sized frames.
-    )
-
     more_itertools.consume(
         reduce_frames_by_score(
-            scoring_frames=scoring_frames_count_resolution.frames,
-            output_frames=output_frames_count_resolution.frames,
+            scoring_frames=preload_and_scale(
+                frames_count_resolution=_FramesCountResolution(
+                    frames=tqdm(
+                        cropped_frames_for_scoring,
+                        total=primary_source.total_frame_count,
+                        unit="Frames",
+                        ncols=100,
+                        desc="Reading Cropped Frames for Scoring",
+                        maxinterval=1,
+                    ),
+                    total_frame_count=primary_source.total_frame_count,
+                    original_resolution=crop_resolution,
+                ),
+                max_side_length=conversion_scoring_functions.max_side_length,
+                buffer_size=scaled_frames_buffer_size,
+            ).frames,
+            output_frames=tqdm(
+                cropped_frames_for_output,
+                total=primary_source.total_frame_count,
+                unit="Frames",
+                ncols=100,
+                desc="Reading Cropped Frames for Output",
+                maxinterval=1,
+            ),
             source_frame_count=primary_source.total_frame_count,
             intermediate_info=(
                 IntermediateFileInfo(
@@ -338,6 +345,7 @@ def create_timelapse_crop_score(  # pylint: disable=too-many-locals,too-many-pos
             output_fps=output_fps,
             batch_size=batch_size_scores,
             conversion_scoring_functions=conversion_scoring_functions,
+            audio_paths=audio_paths,
             deselection_radius_frames=scoring_deselection_radius_frames,
             plot_path=plot_path,
         )

@@ -129,7 +129,7 @@ HDF5_SERIALIZER = Serializer(
     deserialize=deserialize_hdf5,
 )
 HDF5_COMPRESSED_SERIALIZER = Serializer(
-    serialize=partial(serialize_hdf5, compression="gzip", compression_opts=3),
+    serialize=partial(serialize_hdf5, compression="gzip", compression_opts=9),
     deserialize=deserialize_hdf5,
 )
 

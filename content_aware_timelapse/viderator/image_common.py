@@ -120,10 +120,18 @@ def resize_image_max_side(
         new_width = int(resolution.width * scale)
         new_height = int(resolution.height * scale)
 
-        output = cast(
-            RGBInt8ImageType,
-            cv2.resize(image, (new_width, new_height), interpolation=cv2.INTER_LINEAR),
-        )
+        try:
+            output = cast(
+                RGBInt8ImageType,
+                cv2.resize(image, (new_width, new_height), interpolation=cv2.INTER_LINEAR),
+            )
+        except cv2.error as e:
+            raise ValueError(
+                f"Couldn't resize image. Shape: {image.shape}, "
+                f"New Size {(new_width, new_height)}, "
+                f"Max Side Length: {max_side_length}, "
+                f"Scale: {scale}"
+            ) from e
 
     if delete:
         del image

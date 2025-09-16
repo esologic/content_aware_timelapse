@@ -620,25 +620,6 @@ files = [
 ]
 
 [[package]]
-name = "deffcode"
-version = "0.2.6"
-description = "A cross-platform High-performance & Flexible Real-time Video Frames Decoder in Python."
-optional = false
-python-versions = ">=3.8"
-groups = ["main"]
-files = [
-    {file = "deffcode-0.2.6-py3-none-any.whl", hash = "sha256:b832712940b3956e2b9fcf65af32807f5d8e91dfc140a95166c48ea110de33db"},
-    {file = "deffcode-0.2.6.tar.gz", hash = "sha256:7a3670c82a554316e3aafdcfd5755064fc0331b054817f8e6b7d81c549609692"},
-]
-
-[package.dependencies]
-colorlog = "*"
-cython = "*"
-numpy = "*"
-requests = "*"
-tqdm = "*"
-
-[[package]]
 name = "dill"
 version = "0.4.0"
 description = "serialize all of Python"
@@ -3042,4 +3023,4 @@ test = ["pytest (>=3.0.0)"]
 [metadata]
 lock-version = "2.1"
 python-versions = "^3.10"
-content-hash = "811ac61d225999a3f26ccd05ff807a01cccec103dde56be65858e707816628fe"
+content-hash = "1376067e2b9db96ea5ee6f72bbfdf9e46757b0e00f1867b38a44cdd46304006f"

@@ -3,7 +3,6 @@ Different functions to pull frames out of a video.
 """
 
 import itertools
-import json
 import logging
 from fractions import Fraction
 from pathlib import Path
@@ -12,7 +11,6 @@ from typing import Iterator, List, Optional, Protocol, cast
 import cv2
 import ffmpeg
 import numpy as np
-from deffcode import FFdecoder
 
 from content_aware_timelapse.viderator.video_common import VideoFrames, reduce_fps_take_every
 from content_aware_timelapse.viderator.viderator_types import (
@@ -237,6 +235,9 @@ def frames_in_video_ffmpeg(  # pylint: disable=too-many-locals
     )
 
 
+# Starting place for hardware video decoder.
+# pylint: disable=pointless-string-statement,trailing-whitespace
+""" 
 def frames_in_video_hardware(  # pylint: disable=too-many-locals
     video_path: Path,
     video_fps: Optional[float] = None,
@@ -244,15 +245,6 @@ def frames_in_video_hardware(  # pylint: disable=too-many-locals
     width_height: Optional[ImageResolution] = None,
     starting_frame: Optional[int] = None,
 ) -> VideoFrames:
-    """
-    Reads frames from a file using wrapped ffmpeg to add the usage of hardware decording.
-    :param video_path: See docs in protocol.
-    :param video_fps: See docs in protocol.
-    :param reduce_fps_to: See docs in protocol.
-    :param width_height: See docs in protocol.
-    :param starting_frame: See docs in protocol.
-    :return: See docs in protocol.
-    """
 
     ffparams = {"-vcodec": "h264_cuvid", "-enforce_cv_patch": True}
 
@@ -288,10 +280,6 @@ def frames_in_video_hardware(  # pylint: disable=too-many-locals
     resize = (original_width_height != width_height) if width_height is not None else False
 
     def frames() -> ImageSourceType:
-        """
-        Read frames off of the video capture until there none left or pulling a frame fails.
-        :return: An iterator of frames.
-        """
 
         for frame in decoder.generateFrame():
 
@@ -321,3 +309,4 @@ def frames_in_video_hardware(  # pylint: disable=too-many-locals
         total_frame_count=total_frame_count,
         frames=itertools.islice(frames(), None, None, take_every),
     )
+"""

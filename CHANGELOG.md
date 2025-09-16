@@ -8,6 +8,7 @@ interesting region of a given aspect ratio to crop the output to. Down-sampling 
 occurs.
 * Reorganized project a bit to support this new mode.
 * Fixed bug in buffer where frames would not flow if the buffer was larger than the input frames.
+* All CLIs now support the `--audio` option to add audio files ot the videos.
 
 
 0.7.0 - (2025-09-07)

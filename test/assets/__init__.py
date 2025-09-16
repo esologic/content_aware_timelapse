@@ -8,6 +8,7 @@ _ASSETS_DIRECTORY = Path(__file__).parent.resolve()
 ASSETS_DIRECTORY_PATH = str(_ASSETS_DIRECTORY)
 
 SAMPLE_TIMELAPSE_INPUT_PATH = _ASSETS_DIRECTORY / "sample_timelapse_input.mp4"
+SAMPLE_AUDIO_PATH = _ASSETS_DIRECTORY / "sample_audio.mp3"
 LONG_TEST_VIDEO_PATH = _ASSETS_DIRECTORY / "long_video.mp4"
 
 BORING_IMAGES_PATHS: List[Path] = [
