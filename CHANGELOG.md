@@ -1,6 +1,6 @@
 # Changelog
 
-0.8.0 - (2025-09-14)
+0.8.0 - (2025-09-16)
 ------------------
 
 * Introduced a new CLI command, `content-cropped` that uses POI analysis to pick the most 
