@@ -7,12 +7,12 @@ import json
 import logging
 from functools import partial
 from pathlib import Path
+from tempfile import NamedTemporaryFile
 from typing import List, NamedTuple, Optional, Set, cast
 
 import more_itertools
 from tqdm import tqdm
 
-import content_aware_timelapse.viderator.frames_in_video
 from content_aware_timelapse.frames_to_vectors.conversion import IntermediateFileInfo
 from content_aware_timelapse.frames_to_vectors.conversion_types import (
     ConversionPOIsFunctions,
@@ -24,7 +24,12 @@ from content_aware_timelapse.frames_to_vectors.vector_points_of_interest import 
 )
 from content_aware_timelapse.frames_to_vectors.vector_scoring import reduce_frames_by_score
 from content_aware_timelapse.vector_file import create_videos_signature
-from content_aware_timelapse.viderator import image_common, iterator_common, iterator_on_disk
+from content_aware_timelapse.viderator import (
+    frames_in_video,
+    image_common,
+    iterator_common,
+    video_common,
+)
 from content_aware_timelapse.viderator.video_common import VideoFrames
 from content_aware_timelapse.viderator.viderator_types import (
     AspectRatio,
@@ -35,7 +40,7 @@ from content_aware_timelapse.viderator.viderator_types import (
 LOGGER = logging.getLogger(__name__)
 
 
-class _FramesCountResolution(NamedTuple):
+class _CombinedVideos(NamedTuple):
     """
     Intermediate type for keeping track of the total number of frames in an iterator.
     """
@@ -43,6 +48,7 @@ class _FramesCountResolution(NamedTuple):
     total_frame_count: int
     frames: ImageSourceType
     original_resolution: ImageResolution
+    original_fps: float
 
 
 def calculate_output_frames(duration: float, output_fps: float) -> int:
@@ -56,7 +62,7 @@ def calculate_output_frames(duration: float, output_fps: float) -> int:
     return int(duration * output_fps)
 
 
-def load_input_videos(input_files: List[Path], tqdm_desc: str) -> _FramesCountResolution:
+def load_input_videos(input_files: List[Path], tqdm_desc: str) -> _CombinedVideos:
     """
     Helper function to combine the input videos.
     :param input_files: List of input videos.
@@ -67,7 +73,7 @@ def load_input_videos(input_files: List[Path], tqdm_desc: str) -> _FramesCountRe
     """
 
     input_video_frames: List[VideoFrames] = list(
-        map(content_aware_timelapse.viderator.frames_in_video.frames_in_video_opencv, input_files)
+        map(frames_in_video.frames_in_video_opencv, input_files)
     )
 
     all_input_frames = itertools.chain.from_iterable(
@@ -80,10 +86,12 @@ def load_input_videos(input_files: List[Path], tqdm_desc: str) -> _FramesCountRe
         video_frames.original_resolution for video_frames in input_video_frames
     )
 
+    input_fps: Set[float] = set(video_frames.original_fps for video_frames in input_video_frames)
+
     if len(input_resolutions) > 1:
         raise ValueError(f"Input videos have different resolutions: {input_video_frames}")
 
-    return _FramesCountResolution(
+    return _CombinedVideos(
         total_frame_count=total_frame_count,
         frames=cast(
             ImageSourceType,
@@ -97,26 +105,27 @@ def load_input_videos(input_files: List[Path], tqdm_desc: str) -> _FramesCountRe
             ),
         ),
         original_resolution=next(iter(input_resolutions)),
+        original_fps=next(iter(input_fps)),
     )
 
 
 def preload_and_scale(
-    frames_count_resolution: _FramesCountResolution,
+    video_source: _CombinedVideos,
     max_side_length: Optional[int],
     buffer_size: int,
-) -> _FramesCountResolution:
+) -> _CombinedVideos:
     """
     Wraps a few library functions to optionally scale and pre-load input videos from disk into
     RAM for faster processing. See the underlying docs for `iterator_common.preload_into_memory`
     for the conditions of that load optimization.
-    :param frames_count_resolution: Source.
+    :param video_source: Source.
     :param max_side_length: If given, the source frames will be scaled such that maximum side
     length is scaled to this value while maintaining the source aspect ratio.
     :param buffer_size: Number of frames to preload into memory. If 0, no preloading will occur.
     :return: NT that switches the `frames` field of the input with the modified buffer result.
     """
 
-    output_frames = frames_count_resolution.frames
+    output_frames = video_source.frames
 
     if max_side_length is not None:
         output_frames = map(
@@ -133,10 +142,11 @@ def preload_and_scale(
             source=output_frames, buffer_size=buffer_size, fill_buffer_before_yield=True
         )
 
-    return _FramesCountResolution(
+    return _CombinedVideos(
         frames=output_frames,
-        total_frame_count=frames_count_resolution.total_frame_count,
-        original_resolution=frames_count_resolution.original_resolution,
+        total_frame_count=video_source.total_frame_count,
+        original_resolution=video_source.original_resolution,
+        original_fps=video_source.original_fps,
     )
 
 
@@ -172,9 +182,7 @@ def create_timelapse_score(  # pylint: disable=too-many-locals,too-many-position
     """
 
     frames_count_resolution = preload_and_scale(
-        frames_count_resolution=load_input_videos(
-            input_files=input_files, tqdm_desc="Reading Score Frames"
-        ),
+        video_source=load_input_videos(input_files=input_files, tqdm_desc="Reading Score Frames"),
         max_side_length=conversion_scoring_functions.max_side_length,
         buffer_size=buffer_size,
     )
@@ -257,20 +265,17 @@ def create_timelapse_crop_score(  # pylint: disable=too-many-locals,too-many-pos
 
     poi_crop_result: POICropResult = crop_to_pois(
         analysis_frames=preload_and_scale(
-            frames_count_resolution=_FramesCountResolution(
+            video_source=_CombinedVideos(
                 frames=primary_source.frames,
                 total_frame_count=primary_source.total_frame_count,
                 original_resolution=primary_source.original_resolution,
+                original_fps=primary_source.original_fps,
             ),
             max_side_length=conversion_pois_functions.max_side_length,
             buffer_size=scaled_frames_buffer_size,
         ).frames,
-        output_frames=preload_and_scale(
-            frames_count_resolution=load_input_videos(
-                input_files=input_files, tqdm_desc="Reading Crop Output Frames"
-            ),
-            max_side_length=None,  # Don't scale the output frames.
-            buffer_size=scaled_frames_buffer_size,
+        output_frames=load_input_videos(  # Don't scale or buffer output frames.
+            input_files=input_files, tqdm_desc="Reading Crop Output Frames"
         ).frames,
         drawing_frames=None,
         intermediate_info=(
@@ -288,65 +293,73 @@ def create_timelapse_crop_score(  # pylint: disable=too-many-locals,too-many-pos
         crop_resolution=crop_resolution,
     )
 
-    # We need to consume the resulting cropped image source twice, so it is cached to disk
-    # because the cropped frames could be very large leading to memory pressure.
+    with NamedTemporaryFile(mode="wb", delete=False) as cropped_source_file:
 
-    # TODO: I'd like to be able to not have to go to disk here at all. But this would require
-    # We preserve the frames after vectorization which is complicated.
+        # We need to consume the resulting cropped image source twice, so it is cached to disk
+        # because the cropped frames could be very large leading to memory pressure.
 
-    cropped_frames_for_scoring, cropped_frames_for_output = iterator_on_disk.tee_disk_cache(
-        iterator=poi_crop_result.cropped_to_region,
-        copies=1,
-        serializer=iterator_on_disk.HDF5_COMPRESSED_SERIALIZER,
-    )
+        # TODO: I'd like to be able to not have to go to disk here at all. But this would require
+        # We preserve the frames after vectorization which is complicated.
 
-    more_itertools.consume(
-        reduce_frames_by_score(
-            scoring_frames=preload_and_scale(
-                frames_count_resolution=_FramesCountResolution(
-                    frames=tqdm(
-                        cropped_frames_for_scoring,
-                        total=primary_source.total_frame_count,
-                        unit="Frames",
-                        ncols=100,
-                        desc="Reading Cropped Frames for Scoring",
-                        maxinterval=1,
-                    ),
-                    total_frame_count=primary_source.total_frame_count,
-                    original_resolution=crop_resolution,
-                ),
-                max_side_length=conversion_scoring_functions.max_side_length,
-                buffer_size=scaled_frames_buffer_size,
-            ).frames,
-            output_frames=tqdm(
-                cropped_frames_for_output,
-                total=primary_source.total_frame_count,
-                unit="Frames",
-                ncols=100,
-                desc="Reading Cropped Frames for Output",
-                maxinterval=1,
-            ),
-            source_frame_count=primary_source.total_frame_count,
-            intermediate_info=(
-                IntermediateFileInfo(
-                    path=scores_vectors_path,
-                    signature=create_videos_signature(
-                        video_paths=input_files,
-                        modifications_salt=json.dumps(
-                            {"winning_region": poi_crop_result.winning_region}
-                        ),
-                    ),
-                )
-                if scores_vectors_path is not None
-                else None
-            ),
-            output_path=output_path,
-            num_output_frames=calculate_output_frames(duration=duration, output_fps=output_fps),
-            output_fps=output_fps,
-            batch_size=batch_size_scores,
-            conversion_scoring_functions=conversion_scoring_functions,
-            audio_paths=audio_paths,
-            deselection_radius_frames=scoring_deselection_radius_frames,
-            plot_path=plot_path,
+        cropped_video_path = Path(cropped_source_file.name)
+
+        video_common.write_source_to_disk_consume(
+            source=poi_crop_result.cropped_to_region,
+            video_path=cropped_video_path,
+            video_fps=primary_source.original_fps,
+            high_quality=True,
         )
-    )
+
+        # Complete cropped source now exists on disk, we can read from it as many times as we like.
+
+        more_itertools.consume(
+            reduce_frames_by_score(
+                scoring_frames=preload_and_scale(
+                    video_source=_CombinedVideos(
+                        frames=tqdm(
+                            frames_in_video.frames_in_video_opencv(video_path=cropped_video_path),
+                            total=primary_source.total_frame_count,
+                            unit="Frames",
+                            ncols=100,
+                            desc="Reading Cropped Frames for Scoring",
+                            maxinterval=1,
+                        ),
+                        total_frame_count=primary_source.total_frame_count,
+                        original_resolution=crop_resolution,
+                        original_fps=primary_source.original_fps,
+                    ),
+                    max_side_length=conversion_scoring_functions.max_side_length,
+                    buffer_size=scaled_frames_buffer_size,
+                ).frames,
+                output_frames=tqdm(
+                    frames_in_video.frames_in_video_opencv(video_path=cropped_video_path),
+                    total=primary_source.total_frame_count,
+                    unit="Frames",
+                    ncols=100,
+                    desc="Reading Cropped Frames for Output",
+                    maxinterval=1,
+                ),
+                source_frame_count=primary_source.total_frame_count,
+                intermediate_info=(
+                    IntermediateFileInfo(
+                        path=scores_vectors_path,
+                        signature=create_videos_signature(
+                            video_paths=input_files,
+                            modifications_salt=json.dumps(
+                                {"winning_region": poi_crop_result.winning_region}
+                            ),
+                        ),
+                    )
+                    if scores_vectors_path is not None
+                    else None
+                ),
+                output_path=output_path,
+                num_output_frames=calculate_output_frames(duration=duration, output_fps=output_fps),
+                output_fps=output_fps,
+                batch_size=batch_size_scores,
+                conversion_scoring_functions=conversion_scoring_functions,
+                audio_paths=audio_paths,
+                deselection_radius_frames=scoring_deselection_radius_frames,
+                plot_path=plot_path,
+            )
+        )

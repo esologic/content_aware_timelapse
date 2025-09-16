@@ -26,3 +26,23 @@ def create_black_frames_iterator(image_resolution: ImageResolution, count: int) 
             RGBInt8ImageType,
             np.zeros(shape=(image_resolution.height, image_resolution.width, 3), dtype=np.uint8),
         )
+
+
+def create_random_frames_iterator(image_resolution: ImageResolution, count: int) -> ImageSourceType:
+    """
+    Creates a test iterator with random RGB frames.
+
+    :param image_resolution: Resolution of resulting frames.
+    :param count: Number of frames to create.
+    :return: Image source of the random frames.
+    """
+    for _ in range(count):
+        yield cast(
+            RGBInt8ImageType,
+            np.random.randint(
+                low=0,
+                high=256,
+                size=(image_resolution.height, image_resolution.width, 3),
+                dtype=np.uint8,
+            ),
+        )

@@ -5,14 +5,48 @@ Test to make sure the cache functionality works as expected.
 import time
 from itertools import tee
 from test.assets import LONG_TEST_VIDEO_PATH, SAMPLE_TIMELAPSE_INPUT_PATH
-from typing import List
+from test.test_viderator import viderator_test_common
+from typing import List, Optional
 
 import numpy as np
 import pytest
 
 from content_aware_timelapse import timeout_common
 from content_aware_timelapse.viderator import frames_in_video
-from content_aware_timelapse.viderator.iterator_on_disk import disk_buffer, tee_disk_cache
+from content_aware_timelapse.viderator.iterator_on_disk import (
+    HDF5_COMPRESSED_SERIALIZER,
+    HDF5_SERIALIZER,
+    PICKLE_SERIALIZER,
+    Serializer,
+    disk_buffer,
+    tee_disk_cache,
+)
+from content_aware_timelapse.viderator.viderator_types import ImageResolution
+
+
+def run_disk_cache_test(
+    to_duplicate: List[int | str], copies: int, serializer: Optional[Serializer] = None
+) -> None:
+    """
+    Helper to setup and run the test.
+    :param to_duplicate: Param.
+    :param copies:  Param.
+    :param serializer: Param.
+    :return: None
+    """
+
+    if serializer is None:
+        result = tee_disk_cache(iterator=iter(to_duplicate), copies=copies)
+    else:
+        result = tee_disk_cache(iterator=iter(to_duplicate), copies=copies, serializer=serializer)
+
+    primary = result[0]
+    secondaries = result[1:]
+    assert len(secondaries) == copies
+    assert np.array_equal(to_duplicate, list(primary))
+    for secondary in secondaries:
+        values = list(secondary)
+        assert np.array_equal(to_duplicate, values)
 
 
 @pytest.mark.parametrize("copies", range(1, 4))
@@ -31,15 +65,35 @@ def test_tee_disk_cache(to_duplicate: List[int | str], copies: int) -> None:
     :param copies: Passed to function, this is the number of copies to produce.
     :return: None
     """
+    run_disk_cache_test(to_duplicate, copies)
 
-    result = tee_disk_cache(iterator=iter(to_duplicate), copies=copies)
-    primary = result[0]
-    secondaries = result[1:]
-    assert len(secondaries) == copies
-    assert np.array_equal(to_duplicate, list(primary))
-    for secondary in secondaries:
-        values = list(secondary)
-        assert np.array_equal(to_duplicate, values)
+
+@pytest.mark.parametrize(
+    "serializer", [HDF5_COMPRESSED_SERIALIZER, HDF5_SERIALIZER, PICKLE_SERIALIZER]
+)
+@pytest.mark.parametrize("copies", range(1, 4))
+@pytest.mark.parametrize(
+    "to_duplicate",
+    [
+        list(
+            viderator_test_common.create_random_frames_iterator(
+                image_resolution=ImageResolution(100, 200), count=50
+            )
+        ),
+    ],
+)
+def test_tee_disk_cache_frames(
+    serializer: Serializer, to_duplicate: List[int | str], copies: int
+) -> None:
+    """
+    Specific UT for frames and serialization.
+    param serializer: Serializer to use.
+    :param to_duplicate: Passed to function, this is the iterator to cache.
+    :param copies: Passed to function, this is the number of copies to produce.
+    :return: None
+    """
+
+    run_disk_cache_test(to_duplicate, copies, serializer)
 
 
 def test_disk_buffer() -> None:
@@ -64,21 +118,21 @@ def test_disk_buffer() -> None:
         assert np.array_equal(buffered_frame, input_frame)
 
 
-@pytest.mark.skip
+@pytest.mark.skip()
 def test_disk_buffer_speed() -> None:
     """
     Not really a test, just a way to see how much performance we get with the disk buffer approach.
     :return: None
     """
 
-    source = frames_in_video.frames_in_video_opencv(
-        video_path=LONG_TEST_VIDEO_PATH,
-    ).frames
+    source = viderator_test_common.create_random_frames_iterator(
+        image_resolution=ImageResolution(100, 200), count=50
+    )
 
     buffered_iterator = disk_buffer(source=source, buffer_size=10000)
 
     # Simulates chunks being pulled through the pipeline.
-    time.sleep(300)
+    time.sleep(5)
 
     _buffered_frames, buffered_time = timeout_common.measure_execution_time(list, buffered_iterator)
     _opencv_frames, opencv_time = timeout_common.measure_execution_time(

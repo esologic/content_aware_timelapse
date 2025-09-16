@@ -15,6 +15,7 @@ from typing import Any, Iterator, List, NamedTuple, Optional, Tuple, TypeVar, ca
 from typing_extensions import Protocol
 
 import h5py
+import hdf5plugin
 import more_itertools
 import numpy as np
 from sentinels import NOTHING
@@ -90,7 +91,6 @@ def serialize_hdf5(
     path: Path,
     items: List[RGBInt8ImageType],
     compression: Optional[str],
-    compression_opts: Optional[int],
 ) -> None:
     """
     Writes an item to disk using hdf5, a format for storing data arrays on disk.
@@ -109,7 +109,6 @@ def serialize_hdf5(
             dtype=items_array.dtype,
             data=items_array,
             compression=compression,
-            compression_opts=compression_opts,
         )
 
 
@@ -125,11 +124,15 @@ def deserialize_hdf5(path: Path) -> List[RGBInt8ImageType]:
 
 
 HDF5_SERIALIZER = Serializer(
-    serialize=partial(serialize_hdf5, compression=None, compression_opts=None),
+    serialize=partial(serialize_hdf5, compression=None),
     deserialize=deserialize_hdf5,
 )
+
 HDF5_COMPRESSED_SERIALIZER = Serializer(
-    serialize=partial(serialize_hdf5, compression="gzip", compression_opts=9),
+    serialize=partial(
+        serialize_hdf5,
+        compression=hdf5plugin.Blosc2(cname="zstd", clevel=9, filters=hdf5plugin.Blosc2.SHUFFLE),
+    ),
     deserialize=deserialize_hdf5,
 )
 

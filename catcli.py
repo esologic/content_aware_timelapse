@@ -119,7 +119,7 @@ viz_path_arg = click.option(
 
 deselect_arg = click.option(
     "--deselect",
-    "-d",
+    "-de",
     type=click.IntRange(min=0),
     help="Frames surrounding high scores will be dropped by a radius that starts with this value.",
     required=False,
