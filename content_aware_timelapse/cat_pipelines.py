@@ -7,7 +7,6 @@ import json
 import logging
 from functools import partial
 from pathlib import Path
-from tempfile import NamedTemporaryFile
 from typing import List, NamedTuple, Optional, Set, cast
 
 import more_itertools
@@ -293,7 +292,7 @@ def create_timelapse_crop_score(  # pylint: disable=too-many-locals,too-many-pos
         crop_resolution=crop_resolution,
     )
 
-    with NamedTemporaryFile(mode="wb", delete=False) as cropped_source_file:
+    with video_common.video_safe_temp_path(suffix=output_path.suffix) as cropped_video_path:
 
         # We need to consume the resulting cropped image source twice, so it is cached to disk
         # because the cropped frames could be very large leading to memory pressure.
@@ -301,13 +300,11 @@ def create_timelapse_crop_score(  # pylint: disable=too-many-locals,too-many-pos
         # TODO: I'd like to be able to not have to go to disk here at all. But this would require
         # We preserve the frames after vectorization which is complicated.
 
-        cropped_video_path = Path(cropped_source_file.name)
-
         video_common.write_source_to_disk_consume(
             source=poi_crop_result.cropped_to_region,
             video_path=cropped_video_path,
             video_fps=primary_source.original_fps,
-            high_quality=True,
+            high_quality=False,
         )
 
         # Complete cropped source now exists on disk, we can read from it as many times as we like.
@@ -317,7 +314,9 @@ def create_timelapse_crop_score(  # pylint: disable=too-many-locals,too-many-pos
                 scoring_frames=preload_and_scale(
                     video_source=_CombinedVideos(
                         frames=tqdm(
-                            frames_in_video.frames_in_video_opencv(video_path=cropped_video_path),
+                            frames_in_video.frames_in_video_opencv(
+                                video_path=cropped_video_path
+                            ).frames,
                             total=primary_source.total_frame_count,
                             unit="Frames",
                             ncols=100,
@@ -332,7 +331,7 @@ def create_timelapse_crop_score(  # pylint: disable=too-many-locals,too-many-pos
                     buffer_size=scaled_frames_buffer_size,
                 ).frames,
                 output_frames=tqdm(
-                    frames_in_video.frames_in_video_opencv(video_path=cropped_video_path),
+                    frames_in_video.frames_in_video_opencv(video_path=cropped_video_path).frames,
                     total=primary_source.total_frame_count,
                     unit="Frames",
                     ncols=100,

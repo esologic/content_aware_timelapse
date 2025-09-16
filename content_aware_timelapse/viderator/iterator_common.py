@@ -4,6 +4,7 @@ throughout this application.
 """
 
 import collections
+import contextlib
 import datetime
 import itertools
 import logging
@@ -93,17 +94,19 @@ def preload_into_memory(
         `.put` operations block if the queue is full, which is used to make sure it is topped up.
         :return: None
         """
-        for input_item in source:
 
-            if fill_buffer_before_yield and not buffer_filled.is_set():
-                try:
-                    item_queue.put_nowait(input_item)
-                except Full:
-                    buffer_filled.set()
-            else:
-                item_queue.put(input_item)
+        with contextlib.suppress(Exception):  # pylint: disable=broad-except
+            for input_item in source:
 
-            del input_item
+                if fill_buffer_before_yield and not buffer_filled.is_set():
+                    try:
+                        item_queue.put_nowait(input_item)
+                    except Full:
+                        buffer_filled.set()
+                else:
+                    item_queue.put(input_item)
+
+                del input_item
 
         # Unblock consumer in the case that the input iterator is smaller than the buffer size.
         buffer_filled.set()

@@ -4,10 +4,12 @@ Common functionality for dealing with video files.
 
 import logging
 import math
+import os
 import pprint
+import tempfile
+from contextlib import contextmanager
 from pathlib import Path
-from tempfile import NamedTemporaryFile
-from typing import Callable, List, NamedTuple, Optional, Union, cast
+from typing import Callable, Iterator, List, NamedTuple, Optional, Union, cast
 
 import cv2
 import ffmpeg
@@ -311,17 +313,16 @@ def write_source_to_disk_forward(
             writer.release()
 
     try:
-        if audio_paths:
+        if audio_paths is None or not audio_paths:
             yield from setup_iteration(video_path)
         else:
-            # Don't write the video-only file to disk at the output path, instead
-            with NamedTemporaryFile(suffix=video_path.suffix) as file:
-                temp_video_path = Path(file.name)
+            with video_safe_temp_path(suffix=video_path.suffix) as temp_video_path:
                 yield from setup_iteration(temp_video_path)
-                file.flush()
                 LOGGER.info(f"Finalizing {video_path}")
                 add_wavs_to_video(
-                    video_path=temp_video_path, audio_paths=audio_paths, output_path=video_path
+                    video_path=temp_video_path,
+                    audio_paths=audio_paths,
+                    output_path=video_path,
                 )
     except Exception as e:
         LOGGER.exception(f"Ran into an exception writing out a video: {pprint.pformat(e)}")
@@ -463,3 +464,24 @@ def crop_source(source: ImageSourceType, region: RectangleRegion) -> ImageSource
     yield from (
         (image_common.crop_image(image=image, region=region, delete=True)) for image in source
     )
+
+
+@contextmanager
+def video_safe_temp_path(suffix: str) -> Iterator[Path]:
+    """
+    Context manager that yields a Path to a temporary file.
+    The file is created and closed immediately, then unlinked
+    automatically on context exit.
+
+    :param suffix: Optional file suffix (e.g. '.mp4')
+    """
+    fd, temp_name = tempfile.mkstemp(suffix=suffix)
+    os.close(fd)  # close the low-level fd, we only care about the path
+    video_path = Path(temp_name)
+    try:
+        yield video_path
+    finally:
+        try:
+            video_path.unlink(missing_ok=True)
+        except Exception:  # pylint: disable=broad-except
+            pass
