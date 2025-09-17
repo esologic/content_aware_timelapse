@@ -298,7 +298,8 @@ def create_timelapse_crop_score(  # pylint: disable=too-many-locals,too-many-pos
         # because the cropped frames could be very large leading to memory pressure.
 
         # TODO: I'd like to be able to not have to go to disk here at all. But this would require
-        # We preserve the frames after vectorization which is complicated.
+        # We preserve the frames after vectorization which is complicated, because they are shrunken
+        # When passed to the GPU.
 
         video_common.write_source_to_disk_consume(
             source=poi_crop_result.cropped_to_region,
