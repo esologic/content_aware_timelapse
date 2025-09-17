@@ -1,5 +1,12 @@
 # Changelog
 
+0.8.1 - (2025-09-17)
+------------------
+
+* Small fixes in `cropped-content`.
+* Uses video file for storing cropped frames, don't love this.
+
+
 0.8.0 - (2025-09-16)
 ------------------
 

@@ -301,6 +301,8 @@ def create_timelapse_crop_score(  # pylint: disable=too-many-locals,too-many-pos
         # We preserve the frames after vectorization which is complicated, because they are shrunken
         # When passed to the GPU.
 
+        # TODO: We're probably loosing visual fidelity with this step as well.
+
         video_common.write_source_to_disk_consume(
             source=poi_crop_result.cropped_to_region,
             video_path=cropped_video_path,

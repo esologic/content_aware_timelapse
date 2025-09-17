@@ -130,7 +130,7 @@ def test_create_timelapse_crop_score(
     :return: None
     """
 
-    output_path = Path("./") / "output.mp4"
+    output_path = Path(tmpdir) / "output.mp4"
     pois_vectors_path = Path(tmpdir) / "pios_vectors.hdf5"
     scores_vectors_path = Path(tmpdir) / "scores_vectors.hdf5"
 
