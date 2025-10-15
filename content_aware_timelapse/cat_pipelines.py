@@ -27,6 +27,7 @@ from content_aware_timelapse.viderator import (
     frames_in_video,
     image_common,
     iterator_common,
+    iterator_on_disk,
     video_common,
 )
 from content_aware_timelapse.viderator.video_common import VideoFrames
@@ -292,34 +293,31 @@ def create_timelapse_crop_score(  # pylint: disable=too-many-locals,too-many-pos
         crop_resolution=crop_resolution,
     )
 
-    with video_common.video_safe_temp_path(suffix=output_path.suffix) as cropped_video_path:
+    # We need to consume the resulting cropped image source twice, so it is cached to disk
+    # because the cropped frames could be very large leading to memory pressure.
 
-        # We need to consume the resulting cropped image source twice, so it is cached to disk
-        # because the cropped frames could be very large leading to memory pressure.
+    # TODO: I'd like to be able to not have to go to disk here at all. But this would require
+    # We preserve the frames after vectorization which is complicated, because they are shrunken
+    # When passed to the GPU.
 
-        # TODO: I'd like to be able to not have to go to disk here at all. But this would require
-        # We preserve the frames after vectorization which is complicated, because they are shrunken
-        # When passed to the GPU.
+    # TODO: We're probably loosing visual fidelity with this step as well.
 
-        # TODO: We're probably loosing visual fidelity with this step as well.
+    with video_common.video_safe_temp_path() as video_safe_temp_path:
 
-        video_common.write_source_to_disk_consume(
+        cropped_for_scoring, cropped_for_output = iterator_on_disk.video_file_tee(
             source=poi_crop_result.cropped_to_region,
-            video_path=cropped_video_path,
+            copies=2,
             video_fps=primary_source.original_fps,
-            high_quality=False,
+            intermediate_video_path=video_safe_temp_path,
         )
 
         # Complete cropped source now exists on disk, we can read from it as many times as we like.
-
         more_itertools.consume(
             reduce_frames_by_score(
                 scoring_frames=preload_and_scale(
                     video_source=_CombinedVideos(
                         frames=tqdm(
-                            frames_in_video.frames_in_video_opencv(
-                                video_path=cropped_video_path
-                            ).frames,
+                            cropped_for_scoring,
                             total=primary_source.total_frame_count,
                             unit="Frames",
                             ncols=100,
@@ -334,7 +332,7 @@ def create_timelapse_crop_score(  # pylint: disable=too-many-locals,too-many-pos
                     buffer_size=scaled_frames_buffer_size,
                 ).frames,
                 output_frames=tqdm(
-                    frames_in_video.frames_in_video_opencv(video_path=cropped_video_path).frames,
+                    cropped_for_output,
                     total=primary_source.total_frame_count,
                     unit="Frames",
                     ncols=100,

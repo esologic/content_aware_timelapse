@@ -19,7 +19,7 @@ from content_aware_timelapse.frames_to_vectors.vector_computation.compute_vector
     CONVERT_SCORE_VIT_CLS,
 )
 from content_aware_timelapse.viderator import video_common
-from content_aware_timelapse.viderator.viderator_types import AspectRatio
+from content_aware_timelapse.viderator.viderator_types import AspectRatio, AspectRatioParamType
 
 LOGGER_FORMAT = "[%(asctime)s - %(process)s - %(name)20s - %(levelname)s] %(message)s"
 LOGGER_DATE_FORMAT = "%Y-%m-%d %H:%M:%S"
@@ -240,49 +240,6 @@ def content(  # pylint: disable=too-many-locals,too-many-positional-arguments,to
 
 _CONVERSION_POIS_FUNCTIONS_LOOKUP = {VectorBackendPOIs.vit_attention: CONVERT_POIS_VIT_ATTENTION}
 
-
-class AspectRatioParamType(click.ParamType):
-    """
-    Parameter for passing in an aspect ratio.
-    """
-
-    name: str = "aspect-ratio"
-
-    def convert(
-        self,
-        value: str,
-        param: Optional[click.Parameter],
-        ctx: Optional[click.Context],
-    ) -> AspectRatio:
-        """
-        Converts input string to namedtuple.
-        :param value: To convert.
-        :param param: Only consumed in error state.
-        :param ctx: Only consumed in error state.
-        :return: Parsed type.
-        """
-
-        try:
-            width_str, height_str = str(value).split(":")
-            width = float(width_str)
-            height = float(height_str)
-        except ValueError:
-            self.fail(
-                f"{value!r} is not a valid aspect ratio. Use the format WIDTH:HEIGHT",
-                param,
-                ctx,
-            )
-
-        if width <= 0 or height <= 0:
-            self.fail(
-                f"Aspect ratio values must be positive (got {width}:{height})",
-                param,
-                ctx,
-            )
-
-        return AspectRatio(width=width, height=height)
-
-
 ASPECT_RATIO: AspectRatioParamType = AspectRatioParamType()
 
 
@@ -469,4 +426,4 @@ def classic(  # pylint: disable=too-many-locals
 
 
 if __name__ == "__main__":
-    cli()  # pylint: disable=
+    cli()  # pylint: disable=unused-argument

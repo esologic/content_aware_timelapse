@@ -20,7 +20,8 @@ import more_itertools
 import numpy as np
 from sentinels import NOTHING
 
-from content_aware_timelapse.viderator.viderator_types import RGBInt8ImageType
+from content_aware_timelapse.viderator import frames_in_video, video_common
+from content_aware_timelapse.viderator.viderator_types import ImageSourceType, RGBInt8ImageType
 
 T = TypeVar("T")
 
@@ -260,3 +261,30 @@ def disk_buffer(
         serialized_path.unlink()  # type: ignore[attr-defined]
 
     thread.join()
+
+
+def video_file_tee(
+    source: ImageSourceType, copies: int, video_fps: float, intermediate_video_path: Optional[Path]
+) -> Tuple[ImageSourceType, ...]:
+    """
+    Writes the source to disk as a propper video file, then returns iterators reading from that
+    file.
+    The idea being that video files are space-effecient ways to store video on disk.
+    :param source: To copy.
+    :param copies: Number of iterators to return.
+    :param video_fps: Consumed when writing the intermediate video path.
+    :param intermediate_video_path: Path to write the intermediate to.
+    :return: A tuple, of length `copies` of iterators, each containing the frames in `source`.
+    """
+
+    video_common.write_source_to_disk_consume(
+        source=source,
+        video_path=intermediate_video_path,
+        video_fps=video_fps,
+        high_quality=True,
+    )
+
+    return tuple(
+        frames_in_video.frames_in_video_opencv(video_path=intermediate_video_path).frames
+        for _ in range(copies)
+    )

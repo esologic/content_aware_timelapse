@@ -12,7 +12,7 @@ import numpy as np
 import pytest
 
 from content_aware_timelapse import timeout_common
-from content_aware_timelapse.viderator import frames_in_video
+from content_aware_timelapse.viderator import frames_in_video, video_common
 from content_aware_timelapse.viderator.iterator_on_disk import (
     HDF5_COMPRESSED_SERIALIZER,
     HDF5_SERIALIZER,
@@ -20,6 +20,7 @@ from content_aware_timelapse.viderator.iterator_on_disk import (
     Serializer,
     disk_buffer,
     tee_disk_cache,
+    video_file_tee,
 )
 from content_aware_timelapse.viderator.viderator_types import ImageResolution
 
@@ -143,3 +144,28 @@ def test_disk_buffer_speed() -> None:
     )
 
     print(f"buffered time: {buffered_time}, opencv time: {opencv_time}")
+
+
+@pytest.mark.parametrize(
+    "image_resolution,frame_count",
+    [(ImageResolution(100, 100), 200), (ImageResolution(1000, 1000), 300_000)],
+)
+def test_video_file_tee(image_resolution: ImageResolution, frame_count: int) -> None:
+    """
+    Test to make sure going to disk with a video intermediate produces the same video.
+    :param image_resolution: Resolution under test.
+    :param frame_count: Frame count, varried to make sure big/small videos don't cause problems.
+    :return: None
+    """
+
+    with video_common.video_safe_temp_path() as video_safe_temp_path:
+
+        for copied_iterator in video_file_tee(
+            source=viderator_test_common.create_random_frames_iterator(
+                image_resolution=image_resolution, count=frame_count
+            ),
+            copies=2,
+            video_fps=30,
+            intermediate_video_path=video_safe_temp_path,
+        ):
+            assert sum(1 for _ in copied_iterator) == frame_count

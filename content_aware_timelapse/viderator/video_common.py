@@ -132,11 +132,10 @@ def _create_video_writer_resolution(
             "-bf": 2,
             "-use_editlist": 0,
             "-movflags": "+faststart",
-            "-pix_fmt": "yuv422p",
         }
 
         ffmpeg_writer = WriteGear(
-            output=str(video_path), compression_mode=True, logging=False, **output_params
+            output=str(video_path), compression_mode=True, logging=True, **output_params
         )
 
         def write_frame(image: RGBInt8ImageType) -> None:
@@ -467,7 +466,7 @@ def crop_source(source: ImageSourceType, region: RectangleRegion) -> ImageSource
 
 
 @contextmanager
-def video_safe_temp_path(suffix: str) -> Iterator[Path]:
+def video_safe_temp_path(suffix: str = ".mp4") -> Iterator[Path]:
     """
     Context manager that yields a Path to a temporary file.
     The file is created and closed immediately, then unlinked
