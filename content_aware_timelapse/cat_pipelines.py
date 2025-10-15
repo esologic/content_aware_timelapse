@@ -228,6 +228,7 @@ def create_timelapse_crop_score(  # pylint: disable=too-many-locals,too-many-pos
     conversion_scoring_functions: ConversionScoringFunctions,
     aspect_ratio: AspectRatio,
     scoring_deselection_radius_frames: int,
+    save_cropped_intermediate: bool,
     audio_paths: List[Path],
     pois_vectors_path: Optional[Path],
     scores_vectors_path: Optional[Path],
@@ -248,6 +249,7 @@ def create_timelapse_crop_score(  # pylint: disable=too-many-locals,too-many-pos
     :param conversion_scoring_functions: See docs in library or click.
     :param aspect_ratio: See docs in library or click.
     :param scoring_deselection_radius_frames: See docs in library or click.
+    :param save_cropped_intermediate: See docs in library or click.
     :param audio_paths: See docs in library or click.
     :param pois_vectors_path: See docs in library or click.
     :param scores_vectors_path: See docs in library or click.
@@ -308,7 +310,11 @@ def create_timelapse_crop_score(  # pylint: disable=too-many-locals,too-many-pos
             source=poi_crop_result.cropped_to_region,
             copies=2,
             video_fps=primary_source.original_fps,
-            intermediate_video_path=video_safe_temp_path,
+            intermediate_video_path=(
+                output_path.with_stem(f"{output_path.stem}_cropped_intermediate")
+                if save_cropped_intermediate
+                else video_safe_temp_path
+            ),
         )
 
         # Complete cropped source now exists on disk, we can read from it as many times as we like.
