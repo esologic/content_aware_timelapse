@@ -135,7 +135,7 @@ def _create_video_writer_resolution(
         }
 
         ffmpeg_writer = WriteGear(
-            output=str(video_path), compression_mode=True, logging=True, **output_params
+            output=str(video_path), compression_mode=True, logging=False, **output_params
         )
 
         def write_frame(image: RGBInt8ImageType) -> None:
