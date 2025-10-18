@@ -7,6 +7,7 @@ from typing import Iterator, List, NamedTuple, Optional, Protocol, Tuple, TypedD
 import numpy as np
 import numpy.typing as npt
 
+from content_aware_timelapse.gpu_discovery import GPUDescription
 from content_aware_timelapse.viderator.viderator_types import (
     ImageResolution,
     RGBInt8ImageType,
@@ -33,10 +34,12 @@ class ConvertBatchesFunction(Protocol):
     """
 
     def __call__(
-        self, frame_batches: Iterator[List[RGBInt8ImageType]]
+        self, frame_batches: Iterator[List[RGBInt8ImageType]], gpus: Tuple[GPUDescription, ...]
     ) -> Iterator[npt.NDArray[np.float16]]:
         """
         :param frame_batches: Iterator of batches (lists) of frames for conversion.
+        :param gpus: List of ids of the GPUs to use for conversion. Eventually this can be prompted
+        to something more descriptive than an int if need be.
         :return: An iterator of the converted vectors.
         """
 

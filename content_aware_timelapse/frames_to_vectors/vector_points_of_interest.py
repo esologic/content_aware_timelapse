@@ -16,6 +16,7 @@ from content_aware_timelapse.frames_to_vectors.conversion_types import (
     ConversionPOIsFunctions,
     IndexPointsOfInterest,
 )
+from content_aware_timelapse.gpu_discovery import GPUDescription
 from content_aware_timelapse.viderator import image_common, video_common
 from content_aware_timelapse.viderator.viderator_types import (
     ImageResolution,
@@ -217,6 +218,7 @@ def crop_to_pois(  # pylint: disable=too-many-arguments,too-many-positional-argu
     conversion_pois_functions: ConversionPOIsFunctions,
     original_resolution: ImageResolution,
     crop_resolution: ImageResolution,
+    gpus: Tuple[GPUDescription, ...],
 ) -> POICropResult:
     """
     Crops an input video to a region of that video that is the most interesting using points of
@@ -242,6 +244,7 @@ def crop_to_pois(  # pylint: disable=too-many-arguments,too-many-positional-argu
     input frames.
     :param original_resolution: Resolution of the source.
     :param crop_resolution: Desired resolution to crop to.
+    :param gpus: GPUs to use in the computation.
     :return: Output NT. Contains the region, the cropped output iterator and the visualization
     iterator.
     """
@@ -252,6 +255,7 @@ def crop_to_pois(  # pylint: disable=too-many-arguments,too-many-positional-argu
         batch_size=batch_size,
         total_input_frames=source_frame_count,
         convert_batches=conversion_pois_functions.conversion,
+        gpus=gpus,
     )
 
     points_of_interest: List[IndexPointsOfInterest] = list(

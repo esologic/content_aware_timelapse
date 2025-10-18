@@ -5,7 +5,7 @@ Turn vectorized images to numerical scores, then pick the best images for the ou
 import itertools
 import logging
 from pathlib import Path
-from typing import Iterator, List, Optional, Set
+from typing import Iterator, List, Optional, Set, Tuple
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -20,6 +20,7 @@ from content_aware_timelapse.frames_to_vectors.conversion_types import (
     IndexScores,
     ScoreWeights,
 )
+from content_aware_timelapse.gpu_discovery import GPUDescription
 from content_aware_timelapse.viderator import video_common
 from content_aware_timelapse.viderator.viderator_types import ImageSourceType
 
@@ -178,6 +179,7 @@ def reduce_frames_by_score(  # pylint: disable=too-many-arguments, too-many-posi
     batch_size: int,
     conversion_scoring_functions: ConversionScoringFunctions,
     deselection_radius_frames: int,
+    gpus: Tuple[GPUDescription, ...],
     audio_paths: List[Path],
     plot_path: Optional[Path],
 ) -> ImageSourceType:
@@ -201,6 +203,7 @@ def reduce_frames_by_score(  # pylint: disable=too-many-arguments, too-many-posi
     :param deselection_radius_frames: Frames surrounding high scoring frames removed to
     prevent clustering. This is the number of frames before/after a high scoring one that are
     slightly decreased in score.
+    :param gpus: Describes the GPUs we're allowed to use for this computation.
     :param audio_paths: If given, the audio files will be written to the output video.
     :param plot_path: If given, a visualization of the math that went into scores will be written
     to this path.
@@ -213,6 +216,7 @@ def reduce_frames_by_score(  # pylint: disable=too-many-arguments, too-many-posi
         batch_size=batch_size,
         total_input_frames=source_frame_count,
         convert_batches=conversion_scoring_functions.conversion,
+        gpus=gpus,
     )
 
     LOGGER.debug("Starting to sort output vectors by score.")

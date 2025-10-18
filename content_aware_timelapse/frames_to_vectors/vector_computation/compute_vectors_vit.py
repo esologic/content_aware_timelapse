@@ -28,6 +28,7 @@ from content_aware_timelapse.frames_to_vectors.conversion_types import (
     ScoreWeights,
     XYPoint,
 )
+from content_aware_timelapse.gpu_discovery import GPUDescription
 from content_aware_timelapse.viderator.viderator_types import (
     ImageResolution,
     PILImage,
@@ -128,13 +129,15 @@ class VITOutputMode(int, Enum):
 def _compute_vectors_vit(
     output_mode: VITOutputMode,
     frame_batches: Iterator[List[RGBInt8ImageType]],
+    gpus: Tuple[GPUDescription, ...],
     track_memory_usage: bool = False,
 ) -> Iterator[npt.NDArray[np.float16]]:
     """
     Computes new vectors from the input frames. Uses GPU acceleration if available.
-    :param output_mode: Desired output mode, controls the format of the ouput vectors.
+    :param output_mode: Desired output mode, controls the format of the output vectors.
     :param frame_batches: Iterator of lists of frames to compute vectors. Frames are processed
     in batches, but output will be one vector per frame.
+    :param gpus: GPUs to use for this computation.
     :param track_memory_usage: If given, debugging information about memory usage over time
     will be printed to identify memory leaks.
     :return: Iterator of vectors, one per input frame.
@@ -186,7 +189,7 @@ def _compute_vectors_vit(
             raise
 
     # Load models to each GPU
-    models: List[torch.nn.Module] = list(map(load_model_onto_gpu, range(torch.cuda.device_count())))
+    models: List[torch.nn.Module] = list(map(load_model_onto_gpu, gpus))
 
     def process_images_for_model(
         image_batch: List[RGBInt8ImageType], model: torch.nn.Module

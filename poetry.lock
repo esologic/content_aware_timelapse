@@ -1720,6 +1720,18 @@ files = [
 ]
 
 [[package]]
+name = "nvsmi"
+version = "0.4.2"
+description = "A (user-)friendly wrapper to nvidia-smi"
+optional = false
+python-versions = ">=3.6,<4.0"
+groups = ["main"]
+files = [
+    {file = "nvsmi-0.4.2-py3-none-any.whl", hash = "sha256:718894c24bdf7b58b8ecdfd282dceb06ef120a4b4e0b8517193cba876174945e"},
+    {file = "nvsmi-0.4.2.tar.gz", hash = "sha256:c1a391c7c4dadc6ec572909ff0372451d464ebadc144e5aa5fbbcc893dcb7bfa"},
+]
+
+[[package]]
 name = "opencv-python"
 version = "4.12.0.88"
 description = "Wrapper package for OpenCV python bindings."
@@ -3046,4 +3058,4 @@ test = ["pytest (>=3.0.0)"]
 [metadata]
 lock-version = "2.1"
 python-versions = "^3.10"
-content-hash = "1eca91dad625a3e479c857a0dfc07a06c7301ff341a99d8b6f9b277f90a33f41"
+content-hash = "f2a6121d30ff89fad1a24078f562fac6e615ed86b1269b1633079f15e4fc85ae"

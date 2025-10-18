@@ -1,5 +1,13 @@
 # Changelog
 
+0.9.0 - (2025-10-18)
+------------------
+
+* Fixed bug in intermediate video file storage of cropped frames, opencv could only handle around
+3 hours for some reason, switched to the ffmpeg wrapper already implemented in viderator.
+* Added GPU arguments to both of the content aware CLIs to limit GPU hogging.
+
+
 0.8.1 - (2025-09-17)
 ------------------
 

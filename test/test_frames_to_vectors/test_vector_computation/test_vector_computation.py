@@ -25,6 +25,7 @@ from content_aware_timelapse.frames_to_vectors.vector_computation.compute_vector
     CONVERT_SCORE_VIT_ATTENTION,
     CONVERT_SCORE_VIT_CLS,
 )
+from content_aware_timelapse.gpu_discovery import discover_gpus
 from content_aware_timelapse.viderator import image_common
 from content_aware_timelapse.viderator.viderator_types import ImageSourceType
 
@@ -64,6 +65,7 @@ def test_sorting_scored_vectors(
         batch_size=1,
         total_input_frames=1,
         convert_batches=conversion_scoring_functions.conversion,
+        gpus=discover_gpus(),
     )
 
     score_indexes: List[IndexScores] = list(

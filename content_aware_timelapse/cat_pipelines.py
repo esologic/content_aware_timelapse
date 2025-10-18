@@ -7,7 +7,7 @@ import json
 import logging
 from functools import partial
 from pathlib import Path
-from typing import List, NamedTuple, Optional, Set, cast
+from typing import List, NamedTuple, Optional, Set, Tuple, cast
 
 import more_itertools
 from tqdm import tqdm
@@ -22,6 +22,7 @@ from content_aware_timelapse.frames_to_vectors.vector_points_of_interest import 
     crop_to_pois,
 )
 from content_aware_timelapse.frames_to_vectors.vector_scoring import reduce_frames_by_score
+from content_aware_timelapse.gpu_discovery import GPUDescription
 from content_aware_timelapse.vector_file import create_videos_signature
 from content_aware_timelapse.viderator import (
     frames_in_video,
@@ -160,6 +161,7 @@ def create_timelapse_score(  # pylint: disable=too-many-locals,too-many-position
     conversion_scoring_functions: ConversionScoringFunctions,
     deselection_radius_frames: int,
     audio_paths: List[Path],
+    gpus: Tuple[GPUDescription, ...],
     vectors_path: Optional[Path],
     plot_path: Optional[Path],
 ) -> None:
@@ -176,6 +178,7 @@ def create_timelapse_score(  # pylint: disable=too-many-locals,too-many-position
     :param conversion_scoring_functions: See docs in library or click.
     :param deselection_radius_frames: See docs in library or click.
     :param audio_paths: See docs in library or click.
+    :param gpus: See docs in library or click.
     :param vectors_path: See docs in library or click.
     :param plot_path: See docs in library or click.
     :return: None
@@ -212,6 +215,7 @@ def create_timelapse_score(  # pylint: disable=too-many-locals,too-many-position
             deselection_radius_frames=deselection_radius_frames,
             audio_paths=audio_paths,
             plot_path=plot_path,
+            gpus=gpus,
         )
     )
 
@@ -230,6 +234,7 @@ def create_timelapse_crop_score(  # pylint: disable=too-many-locals,too-many-pos
     scoring_deselection_radius_frames: int,
     save_cropped_intermediate: bool,
     audio_paths: List[Path],
+    gpus: Tuple[GPUDescription, ...],
     pois_vectors_path: Optional[Path],
     scores_vectors_path: Optional[Path],
     plot_path: Optional[Path],
@@ -251,6 +256,7 @@ def create_timelapse_crop_score(  # pylint: disable=too-many-locals,too-many-pos
     :param scoring_deselection_radius_frames: See docs in library or click.
     :param save_cropped_intermediate: See docs in library or click.
     :param audio_paths: See docs in library or click.
+    :param gpus: See docs in library or click.
     :param pois_vectors_path: See docs in library or click.
     :param scores_vectors_path: See docs in library or click.
     :param plot_path: See docs in library or click.
@@ -293,6 +299,7 @@ def create_timelapse_crop_score(  # pylint: disable=too-many-locals,too-many-pos
         conversion_pois_functions=conversion_pois_functions,
         original_resolution=primary_source.original_resolution,
         crop_resolution=crop_resolution,
+        gpus=gpus,
     )
 
     # We need to consume the resulting cropped image source twice, so it is cached to disk
@@ -367,5 +374,6 @@ def create_timelapse_crop_score(  # pylint: disable=too-many-locals,too-many-pos
                 audio_paths=audio_paths,
                 deselection_radius_frames=scoring_deselection_radius_frames,
                 plot_path=plot_path,
+                gpus=gpus,
             )
         )

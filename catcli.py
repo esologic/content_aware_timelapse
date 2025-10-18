@@ -4,7 +4,7 @@ import itertools
 import logging
 from enum import Enum
 from pathlib import Path
-from typing import List, Optional
+from typing import List, Optional, Tuple
 
 import click
 
@@ -18,6 +18,7 @@ from content_aware_timelapse.frames_to_vectors.vector_computation.compute_vector
     CONVERT_SCORE_VIT_ATTENTION,
     CONVERT_SCORE_VIT_CLS,
 )
+from content_aware_timelapse.gpu_discovery import GPUDescription, discover_gpus
 from content_aware_timelapse.viderator import video_common
 from content_aware_timelapse.viderator.viderator_types import AspectRatio, AspectRatioParamType
 
@@ -73,7 +74,7 @@ duration_arg = click.option(
     "--duration",
     "-d",
     type=click.FloatRange(min=1),
-    help="Frames are sent to GPU for processing in batches of this size.",
+    help="Desired duration of the output video in seconds.",
     required=True,
     default=30.0,
     show_default=True,
@@ -83,7 +84,7 @@ output_fps_arg = click.option(
     "--output-fps",
     "-f",
     type=click.FloatRange(min=1),
-    help="Frames are sent to GPU for processing in batches of this size.",
+    help="Desired frames/second of the output video.",
     required=True,
     default=60.0,
     show_default=True,
@@ -132,6 +133,15 @@ audio_paths_arg = click.option(
     "-a",
     type=click.Path(file_okay=True, exists=True, dir_okay=False, writable=True, path_type=Path),
     help="If given, these audio(s) will be added to the resulting video.",
+    required=False,
+    multiple=True,
+)
+
+gpus_arg = click.option(
+    "--gpu",
+    "-g",
+    type=click.Choice(choices=discover_gpus()),
+    help="The GPU(s) to use for computation. Can be given multiple times.",
     required=False,
     multiple=True,
 )
@@ -191,6 +201,7 @@ def cli() -> None:
     required=False,
 )
 @viz_path_arg
+@gpus_arg
 def content(  # pylint: disable=too-many-locals,too-many-positional-arguments,too-many-arguments
     input_files: List[Path],
     output_path: Path,
@@ -203,6 +214,7 @@ def content(  # pylint: disable=too-many-locals,too-many-positional-arguments,to
     audio: List[Path],
     vectors_path: Optional[Path],
     viz_path: Optional[Path],
+    gpus: Tuple[GPUDescription, ...],
 ) -> None:
     """
     Numerically scores the input frames based on their contents, then selects the best frames.
@@ -219,7 +231,7 @@ def content(  # pylint: disable=too-many-locals,too-many-positional-arguments,to
     :param deselect: See click docs.
     :param audio: See click docs.
     :param vectors_path: See click docs.
-    :param viz_path: See click docs.
+    :param gpus: See click docs.
     :return: None
     """
 
@@ -235,6 +247,7 @@ def content(  # pylint: disable=too-many-locals,too-many-positional-arguments,to
         audio_paths=audio,
         vectors_path=vectors_path,
         plot_path=viz_path,
+        gpus=gpus,
     )
 
 
@@ -323,6 +336,7 @@ ASPECT_RATIO: AspectRatioParamType = AspectRatioParamType()
     required=False,
 )
 @viz_path_arg
+@gpus_arg
 def content_cropped(  # pylint: disable=too-many-locals,too-many-positional-arguments,too-many-arguments
     input_files: List[Path],
     output_path: Path,
@@ -340,6 +354,7 @@ def content_cropped(  # pylint: disable=too-many-locals,too-many-positional-argu
     vectors_path_pois: Optional[Path],
     vectors_path_scores: Optional[Path],
     viz_path: Optional[Path],
+    gpus: Tuple[GPUDescription, ...],
 ) -> None:
     """
     Crops the input to the most interesting region, then selects the best frames of cropped region.
@@ -361,6 +376,7 @@ def content_cropped(  # pylint: disable=too-many-locals,too-many-positional-argu
     :param vectors_path_pois: See click docs.
     :param vectors_path_scores: See click docs.
     :param viz_path: See click docs.
+    :param gpus: See click docs.
     :return: None
     """
 
@@ -381,6 +397,7 @@ def content_cropped(  # pylint: disable=too-many-locals,too-many-positional-argu
         pois_vectors_path=vectors_path_pois,
         scores_vectors_path=vectors_path_scores,
         plot_path=viz_path,
+        gpus=gpus,
     )
 
 

@@ -18,6 +18,7 @@ from content_aware_timelapse.frames_to_vectors.vector_computation.compute_vector
     CONVERT_SCORE_VIT_ATTENTION,
     CONVERT_SCORE_VIT_CLS,
 )
+from content_aware_timelapse.gpu_discovery import discover_gpus
 from content_aware_timelapse.viderator import frames_in_video
 from content_aware_timelapse.viderator.viderator_types import AspectRatio
 
@@ -62,6 +63,7 @@ def test_create_timelapse_score(
         buffer_size=buffer_size,
         deselection_radius_frames=10,
         audio_paths=[SAMPLE_AUDIO_PATH],
+        gpus=discover_gpus(),
     )
 
     video_frames = frames_in_video.frames_in_video_opencv(
@@ -111,6 +113,7 @@ def test_create_timelapse_score_output(
         buffer_size=0,
         deselection_radius_frames=10,
         audio_paths=[SAMPLE_AUDIO_PATH],
+        gpus=discover_gpus(),
     )
 
     video_frames = frames_in_video.frames_in_video_opencv(
@@ -154,6 +157,7 @@ def test_create_timelapse_crop_score(
         conversion_scoring_functions=CONVERT_SCORE_VIT_CLS,
         audio_paths=[SAMPLE_AUDIO_PATH],
         save_cropped_intermediate=False,
+        gpus=discover_gpus(),
     )
 
     video_frames = frames_in_video.frames_in_video_opencv(

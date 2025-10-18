@@ -18,6 +18,7 @@ from content_aware_timelapse.frames_to_vectors.vector_computation.compute_vector
     CONVERT_SCORE_VIT_ATTENTION,
     CONVERT_SCORE_VIT_CLS,
 )
+from content_aware_timelapse.gpu_discovery import discover_gpus
 from content_aware_timelapse.viderator.viderator_types import ImageResolution
 
 
@@ -47,6 +48,7 @@ def test_frames_to_vectors_pipeline(convert_batches_function: ConvertBatchesFunc
                 batch_size=1,
                 total_input_frames=1,
                 convert_batches=convert_batches_function,
+                gpus=discover_gpus(),
             )
         )
 

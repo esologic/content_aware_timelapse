@@ -66,6 +66,7 @@ tqdm = "^4.66.5"
 vidgear = "^0.3.3"
 pympler = "^1.1"
 hdf5plugin = "^5.1.0"
+nvsmi = "^0.4.2"
 
 
 [tool.poetry.group.dev.dependencies]

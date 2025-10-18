@@ -18,13 +18,14 @@ from content_aware_timelapse.frames_to_vectors.conversion_types import (
     IndexScores,
     ScoreWeights,
 )
+from content_aware_timelapse.gpu_discovery import GPUDescription
 from content_aware_timelapse.viderator.viderator_types import RGBInt8ImageType
 
 LOGGER = logging.getLogger(__name__)
 
 
 def _compute_vectors_clip(
-    frame_batches: Iterator[List[RGBInt8ImageType]],
+    frame_batches: Iterator[List[RGBInt8ImageType]], gpus: Tuple[GPUDescription, ...]
 ) -> Iterator[npt.NDArray[np.float16]]:
     """
     Computes CLIP embeddings for input frames using GPU acceleration if available.
@@ -54,7 +55,7 @@ def _compute_vectors_clip(
             raise
 
     # Load models onto each available GPU
-    models = [load_clip_model(i) for i in range(torch.cuda.device_count())]
+    models = [load_clip_model(i) for i in gpus]
 
     def process_images_for_model(
         image_batch: List[RGBInt8ImageType],

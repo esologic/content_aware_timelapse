@@ -12,6 +12,7 @@ from content_aware_timelapse.frames_to_vectors.conversion_types import Conversio
 from content_aware_timelapse.frames_to_vectors.vector_computation.compute_vectors_vit import (
     CONVERT_POIS_VIT_ATTENTION,
 )
+from content_aware_timelapse.gpu_discovery import discover_gpus
 from content_aware_timelapse.viderator import frames_in_video, iterator_on_disk, video_common
 from content_aware_timelapse.viderator.viderator_types import ImageResolution
 
@@ -43,6 +44,7 @@ def test_crop_to_pois_visualization_check(pois_functions: ConversionPOIsFunction
         conversion_pois_functions=pois_functions,
         original_resolution=video_frames.original_resolution,
         crop_resolution=ImageResolution(500, 500),
+        gpus=discover_gpus(),
     )
 
     cropped = video_common.display_frame_forward_opencv(
