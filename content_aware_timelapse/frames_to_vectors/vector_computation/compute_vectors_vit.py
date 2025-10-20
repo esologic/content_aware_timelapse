@@ -190,7 +190,6 @@ def _compute_vectors_vit(
 
     # Load models to each GPU
     models: List[torch.nn.Module] = list(map(load_model_onto_gpu, gpus))
-    print("stop")
 
     def process_images_for_model(
         image_batch: List[RGBInt8ImageType], model: torch.nn.Module

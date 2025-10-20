@@ -107,7 +107,10 @@ ENV/
 # bigass test video that shouldn't end up on github
 /test/assets/long_video.mkv
 
-*.mp4
+# Human reviewable test outputs that shouldn't be added to the repo.
+/test/*.png
+/test/*.mp4
+
 *.mkv
 
 prod_db_files

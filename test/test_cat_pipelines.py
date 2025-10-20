@@ -5,6 +5,7 @@ End-to-end tests of timelapse creation.
 from datetime import datetime
 from pathlib import Path
 from test.assets import LONG_TEST_VIDEO_PATH, SAMPLE_AUDIO_PATH, SAMPLE_TIMELAPSE_INPUT_PATH
+from typing import Optional
 
 import pytest
 
@@ -20,6 +21,7 @@ from content_aware_timelapse.frames_to_vectors.vector_computation.compute_vector
 )
 from content_aware_timelapse.gpu_discovery import discover_gpus
 from content_aware_timelapse.viderator import frames_in_video
+from content_aware_timelapse.viderator.image_common import load_rgb_image
 from content_aware_timelapse.viderator.viderator_types import AspectRatio
 
 CURRENT_DIRECTORY = Path(__file__).parent.resolve()
@@ -77,6 +79,7 @@ def test_create_timelapse_score(
     assert video_frames.total_frame_count == duration * output_fps
 
 
+@pytest.mark.parametrize("best_frame_enabled", [True, False])
 @pytest.mark.parametrize(
     "conversion_scoring_functions",
     [
@@ -86,6 +89,7 @@ def test_create_timelapse_score(
 )
 def test_create_timelapse_score_output(
     conversion_scoring_functions: ConversionScoringFunctions,
+    best_frame_enabled: bool,
 ) -> None:
     """
     Create timelapses using the supported conversion functions, and write the output to a local
@@ -94,9 +98,14 @@ def test_create_timelapse_score_output(
     :return: None
     """
 
-    output_path = (
-        CURRENT_DIRECTORY
-        / f"{conversion_scoring_functions.name}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.mp4"
+    test_time = datetime.now().strftime("%Y%m%d_%H%M%S")
+
+    output_path = CURRENT_DIRECTORY / f"{conversion_scoring_functions.name}_{test_time}.mp4"
+
+    best_frame_path: Optional[Path] = (
+        (CURRENT_DIRECTORY / f"{conversion_scoring_functions.name}_best_frame_{test_time}.png")
+        if best_frame_enabled
+        else None
     )
 
     duration = 30
@@ -115,7 +124,7 @@ def test_create_timelapse_score_output(
         deselection_radius_frames=10,
         audio_paths=[SAMPLE_AUDIO_PATH],
         gpus=discover_gpus(),
-        best_frame_path=None,
+        best_frame_path=best_frame_path,
     )
 
     video_frames = frames_in_video.frames_in_video_opencv(
@@ -124,6 +133,10 @@ def test_create_timelapse_score_output(
 
     assert output_path.exists()
     assert video_frames.total_frame_count == duration * output_fps
+
+    if best_frame_path is not None:
+        assert best_frame_path.exists()
+        assert load_rgb_image(path=best_frame_path) is not None
 
 
 def test_create_timelapse_crop_score(

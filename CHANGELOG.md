@@ -1,5 +1,11 @@
 # Changelog
 
+0.10.0 - (2025-10-??)
+------------------
+
+* Added `--best-frame-path` to content mode for generating thumbnails.
+
+
 0.9.0 - (2025-10-18)
 ------------------
 

@@ -94,7 +94,7 @@ output_fps_arg = click.option(
 
 buffer_size_arg = click.option(
     "--buffer-size",
-    "-b",
+    "-bu",
     type=click.IntRange(min=0),
     help=(
         "The number of frames to load into an in-memory buffer. "
@@ -177,7 +177,7 @@ def cli() -> None:
 @output_fps_arg
 @click.option(
     "--batch-size",
-    "-b",
+    "-ba",
     type=click.IntRange(min=1),
     help="Frames are sent to GPU for processing in batches of this size.",
     required=True,
