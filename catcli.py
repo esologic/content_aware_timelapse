@@ -214,7 +214,7 @@ def content(  # pylint: disable=too-many-locals,too-many-positional-arguments,to
     audio: List[Path],
     vectors_path: Optional[Path],
     viz_path: Optional[Path],
-    gpus: Tuple[GPUDescription, ...],
+    gpu: Tuple[GPUDescription, ...],
 ) -> None:
     """
     Numerically scores the input frames based on their contents, then selects the best frames.
@@ -231,7 +231,7 @@ def content(  # pylint: disable=too-many-locals,too-many-positional-arguments,to
     :param deselect: See click docs.
     :param audio: See click docs.
     :param vectors_path: See click docs.
-    :param gpus: See click docs.
+    :param gpu: See click docs.
     :return: None
     """
 
@@ -247,7 +247,7 @@ def content(  # pylint: disable=too-many-locals,too-many-positional-arguments,to
         audio_paths=audio,
         vectors_path=vectors_path,
         plot_path=viz_path,
-        gpus=gpus,
+        gpus=gpu,
     )
 
 
@@ -354,7 +354,7 @@ def content_cropped(  # pylint: disable=too-many-locals,too-many-positional-argu
     vectors_path_pois: Optional[Path],
     vectors_path_scores: Optional[Path],
     viz_path: Optional[Path],
-    gpus: Tuple[GPUDescription, ...],
+    gpu: Tuple[GPUDescription, ...],
 ) -> None:
     """
     Crops the input to the most interesting region, then selects the best frames of cropped region.
@@ -372,11 +372,12 @@ def content_cropped(  # pylint: disable=too-many-locals,too-many-positional-argu
     :param backend_scores: See click docs.
     :param aspect_ratio: See click docs.
     :param deselect: See click docs.
+    :param save_cropped: See click docs.
     :param audio: See click docs.
     :param vectors_path_pois: See click docs.
     :param vectors_path_scores: See click docs.
     :param viz_path: See click docs.
-    :param gpus: See click docs.
+    :param gpu: See click docs.
     :return: None
     """
 
@@ -397,7 +398,7 @@ def content_cropped(  # pylint: disable=too-many-locals,too-many-positional-argu
         pois_vectors_path=vectors_path_pois,
         scores_vectors_path=vectors_path_scores,
         plot_path=viz_path,
-        gpus=gpus,
+        gpus=gpu,
     )
 
 

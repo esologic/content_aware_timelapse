@@ -23,6 +23,8 @@ from content_aware_timelapse.viderator.viderator_types import RGBInt8ImageType
 
 LOGGER = logging.getLogger(__name__)
 
+logging.getLogger("timm").setLevel(logging.ERROR)
+
 
 def _compute_vectors_clip(
     frame_batches: Iterator[List[RGBInt8ImageType]], gpus: Tuple[GPUDescription, ...]

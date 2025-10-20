@@ -37,6 +37,8 @@ from content_aware_timelapse.viderator.viderator_types import (
 
 LOGGER = logging.getLogger(__name__)
 
+logging.getLogger("timm").setLevel(logging.ERROR)
+
 VIT_SIDE_LENGTH = 224
 
 
@@ -146,8 +148,6 @@ def _compute_vectors_vit(
     if output_mode == VITOutputMode.ATTENTION_MAP:
         timm.layers.set_fused_attn(False)
 
-    LOGGER.debug(f"Detected {torch.cuda.device_count()} GPUs. Loading Model")
-
     def load_model_onto_gpu(gpu_index: int) -> torch.nn.Module:
         """
         Creates the model, loads it onto the target GPU, and registers forward hooks
@@ -190,6 +190,7 @@ def _compute_vectors_vit(
 
     # Load models to each GPU
     models: List[torch.nn.Module] = list(map(load_model_onto_gpu, gpus))
+    print("stop")
 
     def process_images_for_model(
         image_batch: List[RGBInt8ImageType], model: torch.nn.Module

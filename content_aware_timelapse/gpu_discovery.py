@@ -2,11 +2,14 @@
 Utilities for finding GPUs attached to the system
 """
 
+import logging
 from typing import Tuple, TypeAlias
 
 import nvsmi
 
 GPUDescription: TypeAlias = int
+
+LOGGER = logging.getLogger(__name__)
 
 
 def discover_gpus() -> Tuple[GPUDescription, ...]:
@@ -15,4 +18,6 @@ def discover_gpus() -> Tuple[GPUDescription, ...]:
     :return: A tuple of GPUs.
     """
 
-    return tuple(gpu.id for gpu in nvsmi.get_available_gpus())
+    gpus = tuple(int(gpu.id) for gpu in nvsmi.get_gpus())
+    LOGGER.debug(f"Discovered {len(gpus)} GPUs: {gpus}")
+    return gpus
