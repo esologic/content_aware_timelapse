@@ -5,7 +5,7 @@ Turn vectorized images to numerical scores, then pick the best images for the ou
 import itertools
 import logging
 from pathlib import Path
-from typing import Iterator, List, Optional, Set, Tuple
+from typing import Iterator, List, NamedTuple, Optional, Set, Tuple
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -21,8 +21,8 @@ from content_aware_timelapse.frames_to_vectors.conversion_types import (
     ScoreWeights,
 )
 from content_aware_timelapse.gpu_discovery import GPUDescription
-from content_aware_timelapse.viderator import video_common
-from content_aware_timelapse.viderator.viderator_types import ImageSourceType
+from content_aware_timelapse.viderator import image_common, video_common
+from content_aware_timelapse.viderator.viderator_types import ImageSourceType, RGBInt8ImageType
 
 LOGGER = logging.getLogger(__name__)
 
@@ -86,13 +86,22 @@ def _apply_radius_deselection(
     return selected_indices[:num_output_frames]  # Just in case we over-selected
 
 
+class _ScoredFrame(NamedTuple):
+    """
+    Intermediate type.
+    """
+
+    best_frame_index: int
+    winning_indices: List[int]
+
+
 def _score_and_sort_frames(
     score_weights: ScoreWeights,
     index_scores: List[IndexScores],
     num_output_frames: int,
     deselection_radius_frames: int,
     plot_path: Optional[Path],
-) -> List[int]:
+) -> _ScoredFrame:
     """
     Selects the top `num_output_frames` while avoiding clusters.
 
@@ -165,7 +174,9 @@ def _score_and_sort_frames(
         plt.tight_layout()
         plt.savefig(plot_path)
 
-    return winning_indices
+    return _ScoredFrame(
+        best_frame_index=int(scaled_df["overall_score"].idxmax()), winning_indices=winning_indices
+    )
 
 
 def reduce_frames_by_score(  # pylint: disable=too-many-arguments, too-many-positional-arguments, too-many-locals
@@ -182,6 +193,7 @@ def reduce_frames_by_score(  # pylint: disable=too-many-arguments, too-many-posi
     gpus: Tuple[GPUDescription, ...],
     audio_paths: List[Path],
     plot_path: Optional[Path],
+    best_frame_path: Optional[Path],
 ) -> ImageSourceType:
     """
     Uses input scoring function to reduce the input frames to the desired count by selecting
@@ -207,6 +219,8 @@ def reduce_frames_by_score(  # pylint: disable=too-many-arguments, too-many-posi
     :param audio_paths: If given, the audio files will be written to the output video.
     :param plot_path: If given, a visualization of the math that went into scores will be written
     to this path.
+    :param best_frame_path: If given, the highest scoring frame in the input will be written to
+    this path. Good for thumbnails.
     :return: Selected frames.
     """
 
@@ -228,17 +242,15 @@ def reduce_frames_by_score(  # pylint: disable=too-many-arguments, too-many-posi
         )
     )
 
-    most_interesting_indices: Set[int] = set(
-        sorted(
-            _score_and_sort_frames(
-                score_weights=conversion_scoring_functions.weights,
-                index_scores=score_indexes,
-                num_output_frames=num_output_frames,
-                deselection_radius_frames=deselection_radius_frames,
-                plot_path=plot_path,
-            )
-        )
+    scored_sorted = _score_and_sort_frames(
+        score_weights=conversion_scoring_functions.weights,
+        index_scores=score_indexes,
+        num_output_frames=num_output_frames,
+        deselection_radius_frames=deselection_radius_frames,
+        plot_path=plot_path,
     )
+
+    most_interesting_indices: Set[int] = set(sorted(scored_sorted.winning_indices))
 
     final_frame_index: int = max(most_interesting_indices)
 
@@ -246,10 +258,24 @@ def reduce_frames_by_score(  # pylint: disable=too-many-arguments, too-many-posi
     # Ensure the frame at final_frame_index is included, the plus one.
     sliced_frames: ImageSourceType = itertools.islice(output_frames, None, final_frame_index + 1)
 
+    def filter_frame(index_frame: Tuple[int, RGBInt8ImageType]) -> bool:
+        """
+        Hijacks the enumeration of the output frames to write the best frame.
+        :param index_frame: Indices and the contents of the frames.
+        :return: Filter output, True if the frame is interesting False if otherwise.
+        """
+
+        frame_index, frame = index_frame
+
+        if frame_index == scored_sorted.best_frame_index and best_frame_path is not None:
+            image_common.save_rgb_image(path=best_frame_path, image=frame)
+
+        return frame_index in most_interesting_indices
+
     most_interesting_frames: ImageSourceType = (
         index_frame[1]
         for index_frame in filter(
-            lambda index_frame: index_frame[0] in most_interesting_indices,
+            filter_frame,
             enumerate(sliced_frames),
         )
     )

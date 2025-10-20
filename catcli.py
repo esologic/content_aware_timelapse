@@ -202,6 +202,16 @@ def cli() -> None:
 )
 @viz_path_arg
 @gpus_arg
+@click.option(
+    "--best-frame-path",
+    "-bf",
+    type=click.Path(file_okay=True, dir_okay=False, writable=True, path_type=Path),
+    help=(
+        "If given, the highest scoring frame in the input will be written to this path. "
+        "Good for thumbnails."
+    ),
+    required=False,
+)
 def content(  # pylint: disable=too-many-locals,too-many-positional-arguments,too-many-arguments
     input_files: List[Path],
     output_path: Path,
@@ -214,6 +224,7 @@ def content(  # pylint: disable=too-many-locals,too-many-positional-arguments,to
     audio: List[Path],
     vectors_path: Optional[Path],
     viz_path: Optional[Path],
+    best_frame_path: Optional[Path],
     gpu: Tuple[GPUDescription, ...],
 ) -> None:
     """
@@ -231,7 +242,9 @@ def content(  # pylint: disable=too-many-locals,too-many-positional-arguments,to
     :param deselect: See click docs.
     :param audio: See click docs.
     :param vectors_path: See click docs.
+    :param viz_path: See click docs.
     :param gpu: See click docs.
+    :param best_frame_path: See click docs.
     :return: None
     """
 
@@ -248,6 +261,7 @@ def content(  # pylint: disable=too-many-locals,too-many-positional-arguments,to
         vectors_path=vectors_path,
         plot_path=viz_path,
         gpus=gpu,
+        best_frame_path=best_frame_path,
     )
 
 

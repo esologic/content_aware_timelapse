@@ -64,6 +64,7 @@ def test_create_timelapse_score(
         deselection_radius_frames=10,
         audio_paths=[SAMPLE_AUDIO_PATH],
         gpus=discover_gpus(),
+        best_frame_path=Path(tmpdir) / "best_frame.png",
     )
 
     video_frames = frames_in_video.frames_in_video_opencv(
@@ -114,6 +115,7 @@ def test_create_timelapse_score_output(
         deselection_radius_frames=10,
         audio_paths=[SAMPLE_AUDIO_PATH],
         gpus=discover_gpus(),
+        best_frame_path=None,
     )
 
     video_frames = frames_in_video.frames_in_video_opencv(

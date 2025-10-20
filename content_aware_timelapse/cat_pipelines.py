@@ -164,6 +164,7 @@ def create_timelapse_score(  # pylint: disable=too-many-locals,too-many-position
     gpus: Tuple[GPUDescription, ...],
     vectors_path: Optional[Path],
     plot_path: Optional[Path],
+    best_frame_path: Optional[Path],
 ) -> None:
     """
     Library backend for the UI function. See docs in `reduce_frames_by_score` or docs in click
@@ -181,6 +182,7 @@ def create_timelapse_score(  # pylint: disable=too-many-locals,too-many-position
     :param gpus: See docs in library or click.
     :param vectors_path: See docs in library or click.
     :param plot_path: See docs in library or click.
+    :param best_frame_path: See docs in library or click.
     :return: None
     """
 
@@ -216,6 +218,7 @@ def create_timelapse_score(  # pylint: disable=too-many-locals,too-many-position
             audio_paths=audio_paths,
             plot_path=plot_path,
             gpus=gpus,
+            best_frame_path=best_frame_path,
         )
     )
 
@@ -375,5 +378,6 @@ def create_timelapse_crop_score(  # pylint: disable=too-many-locals,too-many-pos
                 deselection_radius_frames=scoring_deselection_radius_frames,
                 plot_path=plot_path,
                 gpus=gpus,
+                best_frame_path=None,
             )
         )

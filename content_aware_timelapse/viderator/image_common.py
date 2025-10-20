@@ -68,6 +68,17 @@ def load_rgb_image(path: Path) -> RGBInt8ImageType:
     return RGBInt8ImageType(arr)
 
 
+def save_rgb_image(path: Path, image: RGBInt8ImageType) -> None:
+    """
+    Saves an RGB uint8 numpy array to a file at the given path.
+
+    :param path: Destination file path.
+    :param image: RGB image as a (H, W, 3) uint8 ndarray.
+    """
+    img = Image.fromarray(np.asarray(image, dtype=np.uint8), mode="RGB")
+    img.save(path)
+
+
 def resize_image(
     image: RGBInt8ImageType, resolution: ImageResolution, delete: bool = False
 ) -> RGBInt8ImageType:
