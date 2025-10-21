@@ -2,10 +2,17 @@
 Test of common image math and manipulation functions.
 """
 
+from pathlib import Path
+from test import assets
+
 import pytest
 
 from content_aware_timelapse.viderator import image_common
-from content_aware_timelapse.viderator.viderator_types import AspectRatio, ImageResolution
+from content_aware_timelapse.viderator.viderator_types import (
+    AspectRatio,
+    ImageResolution,
+    RectangleRegion,
+)
 
 
 @pytest.mark.parametrize(
@@ -66,3 +73,28 @@ def test_largest_fitting_region(
     :return: None
     """
     assert image_common.largest_fitting_region(source, ratio) == expected
+
+
+def test_reshape_from_regions() -> None:
+    """
+
+    :return:
+    """
+
+    input_image = image_common.load_rgb_image(path=assets.EASTERN_BOX_TURTLE_PATH)
+
+    reshaped = image_common.reshape_from_regions(
+        image=input_image,
+        prioritized_poi_regions=(
+            RectangleRegion(0, 0, 500, 500),
+            RectangleRegion(0, 0, 500, 500),
+            RectangleRegion(0, 0, 500, 500),
+            RectangleRegion(500, 500, 1000, 1000),
+        ),
+        layout_matrix=[[0, 1], [2, 3]],
+    )
+
+    image_common.save_rgb_image(
+        path=Path("./turtle.png"),
+        image=reshaped,
+    )

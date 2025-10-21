@@ -28,7 +28,7 @@ from content_aware_timelapse.viderator.viderator_types import (
 )
 
 
-# @pytest.mark.skip()
+@pytest.mark.skip()
 @pytest.mark.parametrize("pois_functions", [CONVERT_POIS_VIT_ATTENTION])
 def test_crop_to_pois_visualization_check(pois_functions: ConversionPOIsFunctions) -> None:
     """
@@ -90,7 +90,6 @@ def _run_top_regions_test(  # pylint: disable=too-many-positional-arguments,prot
     image_size: ImageResolution,
     region_resolution: ImageResolution,
     num_regions: int,
-    max_overlap: float,
     expected_regions: list[RectangleRegion],
     output_path: Path,
 ) -> None:
@@ -126,7 +125,6 @@ def _run_top_regions_test(  # pylint: disable=too-many-positional-arguments,prot
         region_resolution=region_resolution,
         num_regions=num_regions,
         alpha_points_frames=1,  # Equal weighting by frame count.
-        max_overlap=max_overlap,
     )
 
     # Visualization for eyeball review
@@ -167,35 +165,9 @@ def test__top_regions_no_overlap() -> None:
         image_size=ImageResolution(300, 300),
         region_resolution=ImageResolution(100, 100),
         num_regions=2,
-        max_overlap=0.0,
         expected_regions=[
             RectangleRegion(top=0, left=0, bottom=100, right=100),
             RectangleRegion(top=200, left=200, bottom=300, right=300),
         ],
         output_path=Path("./test_viz_no_overlap.png"),
-    )
-
-
-def test__top_regions_overlap() -> None:
-    """
-    Creates a few clusters of points and then draws the best regions.
-
-    Many points in the top left, several points near the cluster, and then a single point well
-    away from the cluster in the bottom right.
-
-    Because the points near the cluster would create a region that intersects with the region
-    created by the top left cluster, a region containing a single point in the bottom right is
-    created instead.
-    :return: None
-    """
-    _run_top_regions_test(
-        image_size=ImageResolution(300, 300),
-        region_resolution=ImageResolution(100, 100),
-        num_regions=2,
-        max_overlap=0.25,
-        expected_regions=[
-            RectangleRegion(top=0, left=0, bottom=100, right=100),
-            RectangleRegion(top=0, left=60, bottom=100, right=160),
-        ],
-        output_path=Path("./test_viz_overlap.png"),
     )

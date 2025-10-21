@@ -31,6 +31,22 @@ def image_resolution(image: RGBInt8ImageType) -> ImageResolution:
     return ImageResolution(height=image.shape[0], width=image.shape[1])
 
 
+def region_to_resolution(region: RectangleRegion) -> ImageResolution:
+    """
+    Converts a RectangleRegion into an ImageResolution.
+
+    :param region: RectangleRegion defining the area.
+    :return: ImageResolution with width and height of the region.
+    """
+    width = region.right - region.left
+    height = region.bottom - region.top
+
+    if width <= 0 or height <= 0:
+        raise ValueError(f"Invalid RectangleRegion {region}: width and height must be positive.")
+
+    return ImageResolution(width=width, height=height)
+
+
 def largest_fitting_region(
     source_resolution: ImageResolution, aspect_ratio: AspectRatio
 ) -> ImageResolution:
@@ -222,3 +238,105 @@ def draw_regions_on_image(
         draw.rectangle(bbox, outline=color, width=width)
 
     return RGBInt8ImageType(np.array(pil_image))
+
+
+def composite_region(
+    destination_image: RGBInt8ImageType,
+    destination_region: RectangleRegion,
+    image_to_add: RGBInt8ImageType,
+) -> RGBInt8ImageType:
+    """
+    Pastes a cropped region into the destination image at the coordinates defined
+    by `destination_region`.
+
+    :param destination_image: The pre-allocated composited image.
+    :param destination_region: RectangleRegion defining the top-left corner for placement.
+    :param image_to_add: The region to paste into the destination image.
+    :return: Updated destination image.
+    """
+
+    res = region_to_resolution(destination_region)
+
+    # Safety check: ensure the source image matches the destination region size
+    if image_to_add.shape[0] != res.height or image_to_add.shape[1] != res.width:
+        raise ValueError(
+            f"Source image shape {image_to_add.shape[:2]} "
+            f"does not match expected region size {(res.width, res.height)}"
+        )
+
+    # Paste the source image into the destination image
+    destination_image[
+        destination_region.top : destination_region.bottom,
+        destination_region.left : destination_region.right,
+    ] = image_to_add
+
+    return destination_image
+
+
+def reshape_from_regions(  # pylint: disable=too-many-locals
+    image: RGBInt8ImageType,
+    prioritized_poi_regions: Tuple[RectangleRegion, ...],
+    layout_matrix: List[List[int]],
+) -> RGBInt8ImageType:
+    """
+    Reshapes a flat list of regions into a 2D grid matching the priority matrix
+    and composites them into a single output image. Regions with higher priority
+    are drawn on top.
+
+    :param image: The source image to crop from.
+    :param prioritized_poi_regions: Flat list of rectangular regions to crop.
+    :param layout_matrix: 2D grid of integers representing priorities.
+    :return: Composited output image.
+    """
+    num_rows = len(layout_matrix)
+    num_cols = len(layout_matrix[0])
+
+    if len(prioritized_poi_regions) != num_rows * num_cols:
+        raise ValueError(
+            f"Expected {num_rows * num_cols} regions for a {num_rows}x{num_cols} matrix, "
+            f"but got {len(prioritized_poi_regions)}."
+        )
+
+    # Determine size of each region
+    region_resolution = region_to_resolution(prioritized_poi_regions[0])
+    output_width = num_cols * region_resolution.width
+    output_height = num_rows * region_resolution.height
+
+    # Create empty canvas
+    composited: RGBInt8ImageType = cast(
+        RGBInt8ImageType, np.zeros((output_height, output_width, 3), dtype=np.uint8)
+    )
+
+    # Reshape flat regions into rows
+    row_regions = [
+        prioritized_poi_regions[r * num_cols : (r + 1) * num_cols] for r in range(num_rows)
+    ]
+
+    # Pair each region with its priority and record its grid position
+    regions_with_priority: list[tuple[RectangleRegion, int, int, int]] = []
+    for row_idx, (row_region_list, row_priority_list) in enumerate(zip(row_regions, layout_matrix)):
+        for col_idx, (region, priority) in enumerate(zip(row_region_list, row_priority_list)):
+            regions_with_priority.append((region, priority, row_idx, col_idx))
+
+    # Sort descending by priority
+    regions_with_priority.sort(key=lambda rp: rp[1], reverse=True)
+
+    # Composite regions in priority order
+    for region, _priority, row_idx, col_idx in regions_with_priority:
+        cropped = crop_image(image=image, region=region)
+
+        # Compute destination coordinates in the output canvas
+        destination_region = RectangleRegion(
+            top=row_idx * region_resolution.height,
+            left=col_idx * region_resolution.width,
+            bottom=(row_idx + 1) * region_resolution.height,
+            right=(col_idx + 1) * region_resolution.width,
+        )
+
+        composite_region(
+            destination_image=composited,
+            destination_region=destination_region,
+            image_to_add=cropped,
+        )
+
+    return composited

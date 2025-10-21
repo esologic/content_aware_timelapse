@@ -29,7 +29,6 @@ from content_aware_timelapse.viderator import (
     frames_in_video,
     image_common,
     iterator_common,
-    iterator_on_disk,
     video_common,
 )
 from content_aware_timelapse.viderator.video_common import VideoFrames
@@ -65,12 +64,13 @@ def calculate_output_frames(duration: float, output_fps: float) -> int:
     return int(duration * output_fps)
 
 
-def load_input_videos(input_files: List[Path], tqdm_desc: str) -> _CombinedVideos:
+def load_input_videos(input_files: List[Path], tqdm_desc: Optional[str] = None) -> _CombinedVideos:
     """
     Helper function to combine the input videos.
+
     :param input_files: List of input videos.
-    :param tqdm_desc: The resulting `.frames` field in the output iterator will be wrapped
-    in a TQDM with this description.
+    :param tqdm_desc: If provided, wrap the combined frame iterator in a tqdm progress bar
+    with this description. If None, tqdm is disabled.
     :return: NT containing the total frame count and a joined iterator of all the input
     frames.
     """
@@ -80,33 +80,36 @@ def load_input_videos(input_files: List[Path], tqdm_desc: str) -> _CombinedVideo
     )
 
     all_input_frames = itertools.chain.from_iterable(
-        [video_frames.frames for video_frames in input_video_frames]
+        video_frames.frames for video_frames in input_video_frames
     )
 
-    total_frame_count = sum((video_frames.total_frame_count for video_frames in input_video_frames))
+    total_frame_count = sum(video_frames.total_frame_count for video_frames in input_video_frames)
 
-    input_resolutions: Set[ImageResolution] = set(
+    input_resolutions: Set[ImageResolution] = {
         video_frames.original_resolution for video_frames in input_video_frames
-    )
+    }
 
-    input_fps: Set[float] = set(video_frames.original_fps for video_frames in input_video_frames)
+    input_fps: Set[float] = {video_frames.original_fps for video_frames in input_video_frames}
 
     if len(input_resolutions) > 1:
         raise ValueError(f"Input videos have different resolutions: {input_video_frames}")
 
+    # Conditionally wrap in tqdm
+    if tqdm_desc is not None:
+        frames_iter = tqdm(
+            all_input_frames,
+            total=total_frame_count,
+            unit="Frames",
+            ncols=100,
+            desc=tqdm_desc,
+            maxinterval=1,
+        )
+    else:
+        frames_iter = all_input_frames
+
     return _CombinedVideos(
         total_frame_count=total_frame_count,
-        frames=cast(
-            ImageSourceType,
-            tqdm(
-                all_input_frames,
-                total=total_frame_count,
-                unit="Frames",
-                ncols=100,
-                desc=tqdm_desc,
-                maxinterval=1,
-            ),
-        ),
+        frames=cast(ImageSourceType, frames_iter),
         original_resolution=next(iter(input_resolutions)),
         original_fps=next(iter(input_fps)),
     )
@@ -240,7 +243,7 @@ def create_timelapse_crop_score(  # pylint: disable=too-many-locals,too-many-pos
     save_cropped_intermediate: bool,
     audio_paths: List[Path],
     gpus: Tuple[GPUDescription, ...],
-    layout_matrix: List[List[bool]],
+    layout_matrix: List[List[int]],
     pois_vectors_path: Optional[Path],
     scores_vectors_path: Optional[Path],
     plot_path: Optional[Path],
@@ -315,86 +318,67 @@ def create_timelapse_crop_score(  # pylint: disable=too-many-locals,too-many-pos
         region=next(iter(poi_regions)),
     )
 
-    # We need to consume the resulting cropped image source twice, so it is cached to disk
-    # because the cropped frames could be very large leading to memory pressure.
-
-    # TODO: I'd like to be able to not have to go to disk here at all. But this would require
-    # We preserve the frames after vectorization which is complicated, because they are shrunken
-    # When passed to the GPU.
-
-    # TODO: We're probably loosing visual fidelity with this step as well.
-
-    # TODO: now that we have the region we can just read the input again and crop. No need for
-    # intermediate.
-
-    with video_common.video_safe_temp_path() as video_safe_temp_path:
-
-        best_cropped_for_scoring, best_cropped_for_output = iterator_on_disk.video_file_tee(
-            source=cropped_to_best_region,
-            copies=2,
-            video_fps=primary_source.original_fps,
-            intermediate_video_path=(
-                output_path.with_stem(f"{output_path.stem}_cropped_intermediate")
-                if save_cropped_intermediate
-                else video_safe_temp_path
-            ),
-        )
-
-        scored_frames: ScoredFrames = vector_scoring.discover_high_scoring_frames(
-            scoring_frames=preload_and_scale(
-                video_source=_CombinedVideos(
-                    frames=tqdm(
-                        best_cropped_for_scoring,
-                        total=primary_source.total_frame_count,
-                        unit="Frames",
-                        ncols=100,
-                        desc="Reading Cropped Frames for Scoring",
-                        maxinterval=1,
-                    ),
-                    total_frame_count=primary_source.total_frame_count,
-                    original_resolution=crop_resolution,
-                    original_fps=primary_source.original_fps,
+    scored_frames: ScoredFrames = vector_scoring.discover_high_scoring_frames(
+        scoring_frames=preload_and_scale(
+            video_source=_CombinedVideos(
+                frames=tqdm(
+                    cropped_to_best_region,
+                    total=primary_source.total_frame_count,
+                    unit="Frames",
+                    ncols=100,
+                    desc="Reading Cropped Frames for Scoring",
+                    maxinterval=1,
                 ),
-                max_side_length=conversion_scoring_functions.max_side_length,
-                buffer_size=scaled_frames_buffer_size,
-            ).frames,
-            source_frame_count=primary_source.total_frame_count,
-            intermediate_info=(
-                IntermediateFileInfo(
-                    path=scores_vectors_path,
-                    signature=create_videos_signature(
-                        video_paths=input_files,
-                        modifications_salt=json.dumps({"winning_region": next(iter(poi_regions))}),
-                    ),
-                )
-                if scores_vectors_path is not None
-                else None
+                total_frame_count=primary_source.total_frame_count,
+                original_resolution=crop_resolution,
+                original_fps=primary_source.original_fps,
             ),
-            num_output_frames=calculate_output_frames(duration=duration, output_fps=output_fps),
-            batch_size=batch_size_scores,
-            conversion_scoring_functions=conversion_scoring_functions,
-            deselection_radius_frames=scoring_deselection_radius_frames,
-            plot_path=plot_path,
-            gpus=gpus,
-        )
+            max_side_length=conversion_scoring_functions.max_side_length,
+            buffer_size=scaled_frames_buffer_size,
+        ).frames,
+        source_frame_count=primary_source.total_frame_count,
+        intermediate_info=(
+            IntermediateFileInfo(
+                path=scores_vectors_path,
+                signature=create_videos_signature(
+                    video_paths=input_files,
+                    modifications_salt=json.dumps({"winning_region": next(iter(poi_regions))}),
+                ),
+            )
+            if scores_vectors_path is not None
+            else None
+        ),
+        num_output_frames=calculate_output_frames(duration=duration, output_fps=output_fps),
+        batch_size=batch_size_scores,
+        conversion_scoring_functions=conversion_scoring_functions,
+        deselection_radius_frames=scoring_deselection_radius_frames,
+        plot_path=plot_path,
+        gpus=gpus,
+    )
 
-        def output_frames() -> ImageSourceType:
-            """
+    def output_frames() -> ImageSourceType:
+        """
+        Creates the output frames.
+        :return: Iterator of output frames to be written to disk.
+        """
 
-            :return:
-            """
-            for frame_index, frame in enumerate(
-                load_input_videos(  # Don't scale or buffer output frames.
-                    input_files=input_files, tqdm_desc="Reading Crop Output Frames"
-                ).frames
-            ):
-                if frame_index in scored_frames.winning_indices:
-                    yield frame
+        for frame_index, input_frame in enumerate(
+            load_input_videos(
+                input_files=input_files,
+            ).frames
+        ):
+            if frame_index in scored_frames.winning_indices:
 
-        video_common.write_source_to_disk_consume(
-            source=output_frames(),
-            video_path=output_path,
-            video_fps=output_fps,
-            audio_paths=audio_paths,
-            high_quality=False,
-        )
+                yield image_common.reshape_from_regions(
+                    image=input_frame,
+                    prioritized_poi_regions=poi_regions,
+                    layout_matrix=layout_matrix,
+                )
+
+    video_common.write_source_to_disk_consume(
+        source=output_frames(),
+        video_path=output_path,
+        video_fps=output_fps,
+        audio_paths=audio_paths,
+        high_quality=False,
+    )

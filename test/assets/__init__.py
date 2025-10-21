@@ -57,3 +57,5 @@ SORTED_STREAM_GENERIC_PATHS: List[Path] = [
     _ASSETS_DIRECTORY / "stream_cad_1.png",
     _ASSETS_DIRECTORY / "bench_scene_in_focus.png",
 ]
+
+EASTERN_BOX_TURTLE_PATH = _ASSETS_DIRECTORY / "eastern_box_turtle.jpg"

@@ -129,34 +129,32 @@ def _iou(region_a: RectangleRegion, region_b: RectangleRegion) -> float:
     return inter_area / union_area if union_area > 0 else 0.0
 
 
-def _top_regions(  # pylint: disable=too-many-locals,too-many-arguments,too-many-locals,too-many-positional-arguments,too-many-branches
+def _top_regions(  # pylint: disable=too-many-locals,too-many-arguments
     points: List[_PointFrameCount],
     image_size: ImageResolution,
     region_resolution: ImageResolution,
     num_regions: int,
     alpha_points_frames: float,
-    max_overlap: float,
 ) -> List[RectangleRegion]:
     """
-    Exhaustively find the top regions of size `region_size` anywhere in the image. Score each
+    Exhaustively find the top regions of size `region_resolution` anywhere in the image. Score each
     region as a weighted combination of:
       - normalized unique point count in the region
       - normalized sum of frame counts in the region
 
-    The returned regions are the highest scoring while ensuring that the overlap between any two
-    selected regions does not exceed `max_overlap` (fractional IoU).
+    Selection process:
+      1. Start with the highest scoring region.
+      2. Iteratively add regions, always preferring zero-overlap regions.
+      3. If no zero-overlap regions remain, pick regions that minimize overlap while maximizing
+      score.
+      4. Guarantees up to `num_regions` regions are returned if candidates exist.
 
-    :param points: Points of interest within the frame. This list of NTs contains the coordinates
-      of those points and the number of frames they appear in.
-    :param image_size: Size of the image that the POIs exist in.
-    :param region_resolution: The desired size of the output region.
-    :param num_regions: Every possible region in the image will be considered, but only the top
-      number of regions will be returned.
-    :param alpha_points_frames: Relative weight of unique points vs frame counts. 0.0 = only frame
-    counts, 1.0 = only unique points.
-    :param max_overlap: Maximum allowed fractional overlap (IoU) between any two output regions.
-      A value of 0 means no overlap, 1 means overlap is fully allowed.
-    :return: A list of regions sorted by score with the highest scoring region first.
+    :param points: Points of interest within the frame.
+    :param image_size: Size of the image.
+    :param region_resolution: Desired size of the output region.
+    :param num_regions: Number of regions to return.
+    :param alpha_points_frames: Relative weight of unique points vs frame counts.
+    :return: List of top `num_regions` RectangleRegion objects.
     """
 
     if not points:
@@ -171,66 +169,65 @@ def _top_regions(  # pylint: disable=too-many-locals,too-many-arguments,too-many
             frame_count_map[p.point.y, p.point.x] += p.frame_count
             unique_map[p.point.y, p.point.x] = 1
 
-    # Integral images for O(1) sums
+    # Integral images for O(1) sum calculations
     integral_frame = frame_count_map.cumsum(axis=0).cumsum(axis=1)
     integral_unique = unique_map.cumsum(axis=0).cumsum(axis=1)
 
-    region_scores: List[Tuple[float, float, RectangleRegion]] = []
-
-    # Slide window over all positions
+    # Compute raw scores for all possible regions
+    region_scores: List[_ScoredRegion] = []
     for top in range(0, image_size.height - region_resolution.height + 1):
         for left in range(0, image_size.width - region_resolution.width + 1):
-
             region = RectangleRegion(
                 top=top,
                 left=left,
                 bottom=top + region_resolution.height,
                 right=left + region_resolution.width,
             )
-
             frame_sum = _score_region(integral_image=integral_frame, region=region)
             unique_sum = _score_region(integral_image=integral_unique, region=region)
 
             if frame_sum > 0 or unique_sum > 0:
-                region_scores.append((frame_sum, unique_sum, region))
+                region_scores.append(
+                    _ScoredRegion(
+                        score=alpha_points_frames * unique_sum
+                        + (1 - alpha_points_frames) * frame_sum,
+                        region=region,
+                    )
+                )
 
     if not region_scores:
         return []
 
-    # Extract max values for normalization
-    max_frame = max(r[0] for r in region_scores)
-    max_unique = max(r[1] for r in region_scores)
+    remaining = sorted(region_scores, key=lambda r: r.score, reverse=True)
 
-    # This variable will hold every possible region of the given size within the source image.
-    scored_regions: List[_ScoredRegion] = []
+    # Pre-populate with the top-scoring region first
+    selected_regions: List[RectangleRegion] = [remaining.pop(0).region]
 
-    for frame_sum, unique_sum, region in region_scores:
-        frame_norm = frame_sum / max_frame if max_frame > 0 else 0
-        unique_norm = unique_sum / max_unique if max_unique > 0 else 0
-        score = alpha_points_frames * unique_norm + (1 - alpha_points_frames) * frame_norm
-        scored_regions.append(
-            _ScoredRegion(
-                score=score,
-                region=region,
-            )
-        )
+    # Iteratively pick remaining regions
+    while len(selected_regions) < num_regions and remaining:
 
-    # Sort by normalized blended score
-    scored_regions = sorted(scored_regions, key=lambda x: x.score, reverse=True)
+        # Partition candidates into zero-overlap vs overlapping
+        zero_overlap_indices = [
+            i
+            for i, r in enumerate(remaining)
+            if all(_iou(r.region, s) == 0.0 for s in selected_regions)
+        ]
 
-    # Select top regions with overlap constraint
-    selected_regions: List[RectangleRegion] = []
-    for scored in scored_regions:
-        if not selected_regions:
-            selected_regions.append(scored.region)
+        if zero_overlap_indices:
+            # Pick highest scoring zero-overlap region
+            best_idx = max(zero_overlap_indices, key=lambda i: remaining[i].score)
         else:
-            overlaps = [_iou(scored.region, prev) for prev in selected_regions]
-            if all(ov <= max_overlap for ov in overlaps):
-                selected_regions.append(scored.region)
-        if len(selected_regions) >= num_regions:
-            break
+            # Pick region with the highest score penalized by max overlap
+            best_idx = max(
+                range(len(remaining)),
+                key=lambda i: remaining[i].score
+                * (1 - max((_iou(remaining[i].region, s) for s in selected_regions), default=0.0)),
+            )
 
-    return selected_regions
+        selected_regions.append(remaining[best_idx].region)
+        remaining.pop(best_idx)
+
+    return selected_regions[:num_regions]
 
 
 def discover_poi_regions(  # pylint: disable=too-many-arguments,too-many-positional-arguments,too-many-locals
@@ -244,7 +241,6 @@ def discover_poi_regions(  # pylint: disable=too-many-arguments,too-many-positio
     gpus: Tuple[GPUDescription, ...],
     num_regions: int,
     alpha_points_frames: float = 0.8,
-    max_overlap: float = 0,
 ) -> Tuple[RectangleRegion, ...]:
     """
     Crops an input video to a region of that video that is the most interesting using points of
@@ -257,11 +253,6 @@ def discover_poi_regions(  # pylint: disable=too-many-arguments,too-many-positio
     :param analysis_frames: These frames are fed to the GPU via the conversion function and will
     likely be scaled down. Pre-scaled and buffered images should be passed here to avoid waiting
     around.
-    :param output_frames: These are the frames that are actually cropped and forwarded in the
-    output.
-    :param drawing_frames: Should be another copy of `output_frames` that is consumed in
-    visualization. If this is not given the `visualization` field in the output will also
-    be None.
     :param intermediate_info: If given, attention map vectors will be written to disk for faster
     re-runs.
     :param batch_size: Number of scaled input images to send to the GPU at once.
@@ -270,6 +261,8 @@ def discover_poi_regions(  # pylint: disable=too-many-arguments,too-many-positio
     input frames.
     :param original_resolution: Resolution of the source.
     :param crop_resolution: Desired resolution to crop to.
+    :param num_regions:
+    :param alpha_points_frames:
     :param gpus: GPUs to use in the computation.
     :return: Output NT. Contains the region, the cropped output iterator and the visualization
     iterator.
@@ -314,6 +307,5 @@ def discover_poi_regions(  # pylint: disable=too-many-arguments,too-many-positio
             region_resolution=crop_resolution,
             num_regions=num_regions,
             alpha_points_frames=alpha_points_frames,
-            max_overlap=max_overlap,
         )
     )
