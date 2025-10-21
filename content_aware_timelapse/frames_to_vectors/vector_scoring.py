@@ -191,16 +191,23 @@ def discover_high_scoring_frames(  # pylint: disable=too-many-positional-argumen
     plot_path: Optional[Path],
 ) -> ScoredFrames:
     """
+    Function to only get the list of high scoring frames in the input.
 
-    :param scoring_frames:
-    :param intermediate_info:
-    :param batch_size:
-    :param source_frame_count:
-    :param conversion_scoring_functions:
-    :param gpus:
-    :param num_output_frames:
-    :param deselection_radius_frames:
-    :param plot_path:
+    :param scoring_frames: These frames are fed to the GPU via the conversion function and will
+    likely be scaled down. Pre-scaled and buffered images should be passed here to avoid waiting
+    around.
+    :param source_frame_count: Number of frames in the input.
+    :param intermediate_info: If given, vectors will be written to disk for faster
+    re-runs.
+    :param num_output_frames: Number of frames to select.
+    :param batch_size: Number of scaled input images to send to the GPU at once.
+    :param conversion_scoring_functions: Functions to compute vectors then score them.
+    :param deselection_radius_frames: Frames surrounding high scoring frames removed to
+    prevent clustering. This is the number of frames before/after a high scoring one that are
+    slightly decreased in score.
+    :param gpus: Describes the GPUs we're allowed to use for this computation.
+    :param plot_path: If given, a visualization of the math that went into scores will be written
+    to this path.
     :return:
     """
 

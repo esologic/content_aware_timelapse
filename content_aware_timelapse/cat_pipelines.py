@@ -240,7 +240,6 @@ def create_timelapse_crop_score(  # pylint: disable=too-many-locals,too-many-pos
     conversion_scoring_functions: ConversionScoringFunctions,
     aspect_ratio: AspectRatio,
     scoring_deselection_radius_frames: int,
-    save_cropped_intermediate: bool,
     audio_paths: List[Path],
     gpus: Tuple[GPUDescription, ...],
     layout_matrix: List[List[int]],
@@ -263,7 +262,6 @@ def create_timelapse_crop_score(  # pylint: disable=too-many-locals,too-many-pos
     :param conversion_scoring_functions: See docs in library or click.
     :param aspect_ratio: See docs in library or click.
     :param scoring_deselection_radius_frames: See docs in library or click.
-    :param save_cropped_intermediate: See docs in library or click.
     :param audio_paths: See docs in library or click.
     :param gpus: See docs in library or click.
     :param layout_matrix: See docs in library or click.
@@ -342,7 +340,7 @@ def create_timelapse_crop_score(  # pylint: disable=too-many-locals,too-many-pos
                 path=scores_vectors_path,
                 signature=create_videos_signature(
                     video_paths=input_files,
-                    modifications_salt=json.dumps({"winning_region": next(iter(poi_regions))}),
+                    modifications_salt=json.dumps({"winning_regions": list(poi_regions)}),
                 ),
             )
             if scores_vectors_path is not None

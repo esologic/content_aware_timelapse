@@ -171,9 +171,8 @@ def test_create_timelapse_crop_score(
         conversion_pois_functions=CONVERT_POIS_VIT_ATTENTION,
         conversion_scoring_functions=CONVERT_SCORE_VIT_CLS,
         audio_paths=[SAMPLE_AUDIO_PATH],
-        save_cropped_intermediate=False,
         gpus=discover_gpus(),
-        layout_matrix=[[True]],
+        layout_matrix=[[0]],
     )
 
     video_frames = frames_in_video.frames_in_video_opencv(

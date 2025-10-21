@@ -324,18 +324,6 @@ ASPECT_RATIO: AspectRatioParamType = AspectRatioParamType()
 @deselect_arg
 @audio_paths_arg
 @click.option(
-    "--save-cropped",
-    "-sc",
-    type=click.BOOL,
-    help=(
-        "The winning cropped region of the video is written to disk as a part of the process. "
-        "Set this to save this video next to the output, otherwise a tempfile is used."
-    ),
-    required=False,
-    default=True,
-    show_default=True,
-)
-@click.option(
     "--vectors-path-pois",
     "-vp",
     type=click.Path(file_okay=True, dir_okay=False, writable=True, path_type=Path),
@@ -363,7 +351,6 @@ def content_cropped(  # pylint: disable=too-many-locals,too-many-positional-argu
     backend_scores: VectorBackendScores,
     aspect_ratio: AspectRatio,
     deselect: int,
-    save_cropped: bool,
     audio: List[Path],
     vectors_path_pois: Optional[Path],
     vectors_path_scores: Optional[Path],
@@ -386,7 +373,6 @@ def content_cropped(  # pylint: disable=too-many-locals,too-many-positional-argu
     :param backend_scores: See click docs.
     :param aspect_ratio: See click docs.
     :param deselect: See click docs.
-    :param save_cropped: See click docs.
     :param audio: See click docs.
     :param vectors_path_pois: See click docs.
     :param vectors_path_scores: See click docs.
@@ -407,7 +393,6 @@ def content_cropped(  # pylint: disable=too-many-locals,too-many-positional-argu
         conversion_scoring_functions=_CONVERSION_SCORING_FUNCTIONS_LOOKUP[backend_scores],
         aspect_ratio=aspect_ratio,
         scoring_deselection_radius_frames=deselect,
-        save_cropped_intermediate=save_cropped,
         audio_paths=audio,
         pois_vectors_path=vectors_path_pois,
         scores_vectors_path=vectors_path_scores,

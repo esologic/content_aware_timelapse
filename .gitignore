@@ -108,8 +108,8 @@ ENV/
 /test/assets/long_video.mkv
 
 # Human reviewable test outputs that shouldn't be added to the repo.
-/test/*.png
-/test/*.mp4
+/test/*/*.png
+/test/*/*.mp4
 
 *.mkv
 

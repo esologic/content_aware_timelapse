@@ -246,7 +246,7 @@ def composite_region(
     image_to_add: RGBInt8ImageType,
 ) -> RGBInt8ImageType:
     """
-    Pastes a cropped region into the destination image at the coordinates defined
+    Pastes an image into the destination image at the coordinates defined
     by `destination_region`.
 
     :param destination_image: The pre-allocated composited image.
@@ -257,7 +257,7 @@ def composite_region(
 
     res = region_to_resolution(destination_region)
 
-    # Safety check: ensure the source image matches the destination region size
+    # Ensure the source image matches the destination region size
     if image_to_add.shape[0] != res.height or image_to_add.shape[1] != res.width:
         raise ValueError(
             f"Source image shape {image_to_add.shape[:2]} "
@@ -279,9 +279,8 @@ def reshape_from_regions(  # pylint: disable=too-many-locals
     layout_matrix: List[List[int]],
 ) -> RGBInt8ImageType:
     """
-    Reshapes a flat list of regions into a 2D grid matching the priority matrix
-    and composites them into a single output image. Regions with higher priority
-    are drawn on top.
+    Takes region of `image` and composites them in the layout defined by `layout_matrix`, forming
+    a new image.
 
     :param image: The source image to crop from.
     :param prioritized_poi_regions: Flat list of rectangular regions to crop.
