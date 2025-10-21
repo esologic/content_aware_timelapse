@@ -20,7 +20,11 @@ from content_aware_timelapse.frames_to_vectors.vector_computation.compute_vector
 )
 from content_aware_timelapse.gpu_discovery import GPUDescription, discover_gpus
 from content_aware_timelapse.viderator import video_common
-from content_aware_timelapse.viderator.viderator_types import AspectRatio, AspectRatioParamType
+from content_aware_timelapse.viderator.viderator_types import (
+    AspectRatio,
+    AspectRatioParamType,
+    UniqueIntMatrix2DParamType,
+)
 
 LOGGER_FORMAT = "[%(asctime)s - %(process)s - %(name)20s - %(levelname)s] %(message)s"
 LOGGER_DATE_FORMAT = "%Y-%m-%d %H:%M:%S"
@@ -225,7 +229,7 @@ def content(  # pylint: disable=too-many-locals,too-many-positional-arguments,to
     vectors_path: Optional[Path],
     viz_path: Optional[Path],
     best_frame_path: Optional[Path],
-    gpu: Tuple[GPUDescription, ...],
+    gpu: Optional[Tuple[GPUDescription, ...]],
 ) -> None:
     """
     Numerically scores the input frames based on their contents, then selects the best frames.
@@ -260,14 +264,12 @@ def content(  # pylint: disable=too-many-locals,too-many-positional-arguments,to
         audio_paths=audio,
         vectors_path=vectors_path,
         plot_path=viz_path,
-        gpus=gpu,
+        gpus=gpu if gpu else discover_gpus(),
         best_frame_path=best_frame_path,
     )
 
 
 _CONVERSION_POIS_FUNCTIONS_LOOKUP = {VectorBackendPOIs.vit_attention: CONVERT_POIS_VIT_ATTENTION}
-
-ASPECT_RATIO: AspectRatioParamType = AspectRatioParamType()
 
 
 @cli.command(
@@ -317,7 +319,7 @@ ASPECT_RATIO: AspectRatioParamType = AspectRatioParamType()
 @click.option(
     "--aspect-ratio",
     "-r",
-    type=ASPECT_RATIO,
+    type=AspectRatioParamType(),
     required=True,
     help="Aspect ratio in the format WIDTH:HEIGHT (e.g., 16:9, 4:3, 1.85:1).",
 )
@@ -339,6 +341,20 @@ ASPECT_RATIO: AspectRatioParamType = AspectRatioParamType()
 )
 @viz_path_arg
 @gpus_arg
+@click.option(
+    "--layout",
+    "-lo",
+    type=UniqueIntMatrix2DParamType(),
+    required=True,
+    help=(
+        "If given, this will cut the input into multiple high scoring regions and composite the"
+        " input into a single output video. For example, setting the aspect ratio to 1:1 and "
+        "then setting this variable to 1;0;2 will created a vertical video, three squares tall "
+        "with the best scoring region in the center."
+    ),
+    default="0",
+    show_default=True,
+)
 def content_cropped(  # pylint: disable=too-many-locals,too-many-positional-arguments,too-many-arguments
     input_files: List[Path],
     output_path: Path,
@@ -355,7 +371,8 @@ def content_cropped(  # pylint: disable=too-many-locals,too-many-positional-argu
     vectors_path_pois: Optional[Path],
     vectors_path_scores: Optional[Path],
     viz_path: Optional[Path],
-    gpu: Tuple[GPUDescription, ...],
+    gpu: Optional[Tuple[GPUDescription, ...]],
+    layout: List[List[int]],
 ) -> None:
     """
     Crops the input to the most interesting region, then selects the best frames of cropped region.
@@ -378,6 +395,7 @@ def content_cropped(  # pylint: disable=too-many-locals,too-many-positional-argu
     :param vectors_path_scores: See click docs.
     :param viz_path: See click docs.
     :param gpu: See click docs.
+    :param layout: See click docs.
     :return: None
     """
 
@@ -397,10 +415,8 @@ def content_cropped(  # pylint: disable=too-many-locals,too-many-positional-argu
         pois_vectors_path=vectors_path_pois,
         scores_vectors_path=vectors_path_scores,
         plot_path=viz_path,
-        gpus=gpu,
-        layout_matrix=[
-            [0],  # TODO: Pass this in via the CLI.
-        ],
+        gpus=gpu if gpu else discover_gpus(),
+        layout_matrix=layout,
     )
 
 

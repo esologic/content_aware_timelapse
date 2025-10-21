@@ -1,8 +1,14 @@
 # Changelog
 
-0.10.0 - (2025-10-??)
+0.10.0 - (2025-10-21)
 ------------------
 
+* Added `--layout` to `content-cropped`, can now take the best regions of an image and crop to 
+them, combining the output in a new video. This is for going from landscape -> portrait while
+retaining more of the image.
+* Internally did a lot of refactoring to support this change, broke more code into internal API.
+* Was able to factor out the intermediate cropped video piece in favor of just re-cropping the
+input video.
 * Added `--best-frame-path` to content mode for generating thumbnails.
 
 

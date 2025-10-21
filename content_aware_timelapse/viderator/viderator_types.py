@@ -2,12 +2,14 @@
 Common types used in image/video
 """
 
-from typing import Iterator, NamedTuple, NewType, Optional
+from typing import Iterator, List, NamedTuple, NewType, Optional
 
 import click
 import numpy as np
 from numpy import typing as npt
 from PIL.Image import Image as PILImage  # pylint: disable=unused-import
+
+# Other modules can/should import the standard PILImage type from here.
 
 RGBInt8ImageType = NewType("RGBInt8ImageType", npt.NDArray[np.uint8])
 """
@@ -96,3 +98,51 @@ class AspectRatioParamType(click.ParamType):
             )
 
         return AspectRatio(width=width, height=height)
+
+
+class UniqueIntMatrix2DParamType(click.ParamType):
+    """
+    Parameter type for a 2D matrix of unique integers.
+    Accepts strings in the format '1,2;3,4' where rows are separated by ';' and
+    columns by ','.
+    """
+
+    name = "unique-int-matrix-2d"
+
+    def convert(
+        self,
+        value: str,
+        param: Optional[click.Parameter],
+        ctx: Optional[click.Context],
+    ) -> List[List[int]]:
+        """
+        Convert input string to a 2D list of unique integers.
+        """
+        try:
+            rows = value.split(";")
+            matrix: List[List[int]] = []
+            seen: set[int] = set()
+
+            for row in rows:
+                if not row.strip():
+                    continue  # skip empty rows
+                cols = []
+                for x in row.split(","):
+                    x_int = int(x.strip())
+                    if x_int in seen:
+                        raise ValueError(f"Duplicate value detected: {x_int}")
+                    seen.add(x_int)
+                    cols.append(x_int)
+                matrix.append(cols)
+
+            if not matrix:
+                raise ValueError("Matrix cannot be empty")
+
+            # Ensure all rows have the same number of columns
+            n_cols = len(matrix[0])
+            if any(len(r) != n_cols for r in matrix):
+                raise ValueError("All rows must have the same number of columns")
+
+            return matrix
+        except Exception as e:  # pylint: disable=broad-except
+            self.fail(f"{value!r} is not a valid 2D unique integer matrix: {e}", param, ctx)
