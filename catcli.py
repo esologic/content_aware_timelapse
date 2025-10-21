@@ -413,6 +413,9 @@ def content_cropped(  # pylint: disable=too-many-locals,too-many-positional-argu
         scores_vectors_path=vectors_path_scores,
         plot_path=viz_path,
         gpus=gpu,
+        layout_matrix=[
+            [True],
+        ],
     )
 
 

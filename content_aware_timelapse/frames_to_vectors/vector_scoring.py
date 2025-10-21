@@ -86,7 +86,7 @@ def _apply_radius_deselection(
     return selected_indices[:num_output_frames]  # Just in case we over-selected
 
 
-class _ScoredFrame(NamedTuple):
+class ScoredFrames(NamedTuple):
     """
     Intermediate type.
     """
@@ -101,7 +101,7 @@ def _score_and_sort_frames(
     num_output_frames: int,
     deselection_radius_frames: int,
     plot_path: Optional[Path],
-) -> _ScoredFrame:
+) -> ScoredFrames:
     """
     Selects the top `num_output_frames` while avoiding clusters.
 
@@ -174,9 +174,63 @@ def _score_and_sort_frames(
         plt.tight_layout()
         plt.savefig(plot_path)
 
-    return _ScoredFrame(
+    return ScoredFrames(
         best_frame_index=int(scaled_df["overall_score"].idxmax()), winning_indices=winning_indices
     )
+
+
+def discover_high_scoring_frames(  # pylint: disable=too-many-positional-arguments
+    scoring_frames: ImageSourceType,
+    intermediate_info: Optional[IntermediateFileInfo],
+    batch_size: int,
+    source_frame_count: int,
+    conversion_scoring_functions: ConversionScoringFunctions,
+    gpus: Tuple[GPUDescription, ...],
+    num_output_frames: int,
+    deselection_radius_frames: int,
+    plot_path: Optional[Path],
+) -> ScoredFrames:
+    """
+
+    :param scoring_frames:
+    :param intermediate_info:
+    :param batch_size:
+    :param source_frame_count:
+    :param conversion_scoring_functions:
+    :param gpus:
+    :param num_output_frames:
+    :param deselection_radius_frames:
+    :param plot_path:
+    :return:
+    """
+
+    vectors: Iterator[npt.NDArray[np.float16]] = conversion.frames_to_vectors(
+        frames=scoring_frames,
+        intermediate_info=intermediate_info,
+        batch_size=batch_size,
+        total_input_frames=source_frame_count,
+        convert_batches=conversion_scoring_functions.conversion,
+        gpus=gpus,
+    )
+
+    LOGGER.debug("Starting to sort output vectors by score.")
+
+    score_indexes: List[IndexScores] = list(
+        map(
+            conversion_scoring_functions.scoring,
+            enumerate(vectors),
+        )
+    )
+
+    scored_sorted = _score_and_sort_frames(
+        score_weights=conversion_scoring_functions.weights,
+        index_scores=score_indexes,
+        num_output_frames=num_output_frames,
+        deselection_radius_frames=deselection_radius_frames,
+        plot_path=plot_path,
+    )
+
+    return scored_sorted
 
 
 def reduce_frames_by_score(  # pylint: disable=too-many-arguments, too-many-positional-arguments, too-many-locals
@@ -224,27 +278,13 @@ def reduce_frames_by_score(  # pylint: disable=too-many-arguments, too-many-posi
     :return: Selected frames.
     """
 
-    vectors: Iterator[npt.NDArray[np.float16]] = conversion.frames_to_vectors(
-        frames=scoring_frames,
+    scored_sorted = discover_high_scoring_frames(
+        scoring_frames=scoring_frames,
         intermediate_info=intermediate_info,
         batch_size=batch_size,
-        total_input_frames=source_frame_count,
-        convert_batches=conversion_scoring_functions.conversion,
+        source_frame_count=source_frame_count,
+        conversion_scoring_functions=conversion_scoring_functions,
         gpus=gpus,
-    )
-
-    LOGGER.debug("Starting to sort output vectors by score.")
-
-    score_indexes: List[IndexScores] = list(
-        map(
-            conversion_scoring_functions.scoring,
-            enumerate(vectors),
-        )
-    )
-
-    scored_sorted = _score_and_sort_frames(
-        score_weights=conversion_scoring_functions.weights,
-        index_scores=score_indexes,
         num_output_frames=num_output_frames,
         deselection_radius_frames=deselection_radius_frames,
         plot_path=plot_path,

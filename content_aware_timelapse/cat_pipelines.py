@@ -12,13 +12,17 @@ from typing import List, NamedTuple, Optional, Set, Tuple, cast
 import more_itertools
 from tqdm import tqdm
 
+from content_aware_timelapse.frames_to_vectors import vector_scoring
 from content_aware_timelapse.frames_to_vectors.conversion import IntermediateFileInfo
 from content_aware_timelapse.frames_to_vectors.conversion_types import (
     ConversionPOIsFunctions,
     ConversionScoringFunctions,
 )
 from content_aware_timelapse.frames_to_vectors.vector_points_of_interest import discover_poi_regions
-from content_aware_timelapse.frames_to_vectors.vector_scoring import reduce_frames_by_score
+from content_aware_timelapse.frames_to_vectors.vector_scoring import (
+    ScoredFrames,
+    reduce_frames_by_score,
+)
 from content_aware_timelapse.gpu_discovery import GPUDescription
 from content_aware_timelapse.vector_file import create_videos_signature
 from content_aware_timelapse.viderator import (
@@ -236,6 +240,7 @@ def create_timelapse_crop_score(  # pylint: disable=too-many-locals,too-many-pos
     save_cropped_intermediate: bool,
     audio_paths: List[Path],
     gpus: Tuple[GPUDescription, ...],
+    layout_matrix: List[List[bool]],
     pois_vectors_path: Optional[Path],
     scores_vectors_path: Optional[Path],
     plot_path: Optional[Path],
@@ -258,11 +263,14 @@ def create_timelapse_crop_score(  # pylint: disable=too-many-locals,too-many-pos
     :param save_cropped_intermediate: See docs in library or click.
     :param audio_paths: See docs in library or click.
     :param gpus: See docs in library or click.
+    :param layout_matrix: See docs in library or click.
     :param pois_vectors_path: See docs in library or click.
     :param scores_vectors_path: See docs in library or click.
     :param plot_path: See docs in library or click.
     :return: None
     """
+
+    num_regions: int = len(list(itertools.chain.from_iterable(layout_matrix)))
 
     primary_source = load_input_videos(input_files=input_files, tqdm_desc="Reading POI Frames")
 
@@ -272,45 +280,39 @@ def create_timelapse_crop_score(  # pylint: disable=too-many-locals,too-many-pos
 
     # Input video is read twice, this could be optimized.
 
-    winning_region: RectangleRegion = next(
-        iter(
-            discover_poi_regions(
-                analysis_frames=preload_and_scale(
-                    video_source=_CombinedVideos(
-                        frames=primary_source.frames,
-                        total_frame_count=primary_source.total_frame_count,
-                        original_resolution=primary_source.original_resolution,
-                        original_fps=primary_source.original_fps,
-                    ),
-                    max_side_length=conversion_pois_functions.max_side_length,
-                    buffer_size=scaled_frames_buffer_size,
-                ).frames,
-                intermediate_info=(
-                    IntermediateFileInfo(
-                        path=pois_vectors_path,
-                        signature=create_videos_signature(
-                            video_paths=input_files, modifications_salt=None
-                        ),
-                    )
-                    if pois_vectors_path is not None
-                    else None
-                ),
-                batch_size=batch_size_pois,
-                source_frame_count=primary_source.total_frame_count,
-                conversion_pois_functions=conversion_pois_functions,
+    poi_regions: Tuple[RectangleRegion, ...] = discover_poi_regions(
+        analysis_frames=preload_and_scale(
+            video_source=_CombinedVideos(
+                frames=primary_source.frames,
+                total_frame_count=primary_source.total_frame_count,
                 original_resolution=primary_source.original_resolution,
-                crop_resolution=crop_resolution,
-                gpus=gpus,
-                num_regions=1,
+                original_fps=primary_source.original_fps,
+            ),
+            max_side_length=conversion_pois_functions.max_side_length,
+            buffer_size=scaled_frames_buffer_size,
+        ).frames,
+        intermediate_info=(
+            IntermediateFileInfo(
+                path=pois_vectors_path,
+                signature=create_videos_signature(video_paths=input_files, modifications_salt=None),
             )
-        )
+            if pois_vectors_path is not None
+            else None
+        ),
+        batch_size=batch_size_pois,
+        source_frame_count=primary_source.total_frame_count,
+        conversion_pois_functions=conversion_pois_functions,
+        original_resolution=primary_source.original_resolution,
+        crop_resolution=crop_resolution,
+        gpus=gpus,
+        num_regions=num_regions,
     )
 
-    cropped_to_region: ImageSourceType = video_common.crop_source(
+    cropped_to_best_region: ImageSourceType = video_common.crop_source(
         source=load_input_videos(  # Don't scale or buffer output frames.
             input_files=input_files, tqdm_desc="Reading Crop Output Frames"
         ).frames,
-        region=winning_region,
+        region=next(iter(poi_regions)),
     )
 
     # We need to consume the resulting cropped image source twice, so it is cached to disk
@@ -322,10 +324,13 @@ def create_timelapse_crop_score(  # pylint: disable=too-many-locals,too-many-pos
 
     # TODO: We're probably loosing visual fidelity with this step as well.
 
+    # TODO: now that we have the region we can just read the input again and crop. No need for
+    # intermediate.
+
     with video_common.video_safe_temp_path() as video_safe_temp_path:
 
-        cropped_for_scoring, cropped_for_output = iterator_on_disk.video_file_tee(
-            source=cropped_to_region,
+        best_cropped_for_scoring, best_cropped_for_output = iterator_on_disk.video_file_tee(
+            source=cropped_to_best_region,
             copies=2,
             video_fps=primary_source.original_fps,
             intermediate_video_path=(
@@ -335,55 +340,61 @@ def create_timelapse_crop_score(  # pylint: disable=too-many-locals,too-many-pos
             ),
         )
 
-        # Complete cropped source now exists on disk, we can read from it as many times as we like.
-        more_itertools.consume(
-            reduce_frames_by_score(
-                scoring_frames=preload_and_scale(
-                    video_source=_CombinedVideos(
-                        frames=tqdm(
-                            cropped_for_scoring,
-                            total=primary_source.total_frame_count,
-                            unit="Frames",
-                            ncols=100,
-                            desc="Reading Cropped Frames for Scoring",
-                            maxinterval=1,
-                        ),
-                        total_frame_count=primary_source.total_frame_count,
-                        original_resolution=crop_resolution,
-                        original_fps=primary_source.original_fps,
+        scored_frames: ScoredFrames = vector_scoring.discover_high_scoring_frames(
+            scoring_frames=preload_and_scale(
+                video_source=_CombinedVideos(
+                    frames=tqdm(
+                        best_cropped_for_scoring,
+                        total=primary_source.total_frame_count,
+                        unit="Frames",
+                        ncols=100,
+                        desc="Reading Cropped Frames for Scoring",
+                        maxinterval=1,
                     ),
-                    max_side_length=conversion_scoring_functions.max_side_length,
-                    buffer_size=scaled_frames_buffer_size,
-                ).frames,
-                output_frames=tqdm(
-                    cropped_for_output,
-                    total=primary_source.total_frame_count,
-                    unit="Frames",
-                    ncols=100,
-                    desc="Reading Cropped Frames for Output",
-                    maxinterval=1,
+                    total_frame_count=primary_source.total_frame_count,
+                    original_resolution=crop_resolution,
+                    original_fps=primary_source.original_fps,
                 ),
-                source_frame_count=primary_source.total_frame_count,
-                intermediate_info=(
-                    IntermediateFileInfo(
-                        path=scores_vectors_path,
-                        signature=create_videos_signature(
-                            video_paths=input_files,
-                            modifications_salt=json.dumps({"winning_region": winning_region}),
-                        ),
-                    )
-                    if scores_vectors_path is not None
-                    else None
-                ),
-                output_path=output_path,
-                num_output_frames=calculate_output_frames(duration=duration, output_fps=output_fps),
-                output_fps=output_fps,
-                batch_size=batch_size_scores,
-                conversion_scoring_functions=conversion_scoring_functions,
-                audio_paths=audio_paths,
-                deselection_radius_frames=scoring_deselection_radius_frames,
-                plot_path=plot_path,
-                gpus=gpus,
-                best_frame_path=None,
-            )
+                max_side_length=conversion_scoring_functions.max_side_length,
+                buffer_size=scaled_frames_buffer_size,
+            ).frames,
+            source_frame_count=primary_source.total_frame_count,
+            intermediate_info=(
+                IntermediateFileInfo(
+                    path=scores_vectors_path,
+                    signature=create_videos_signature(
+                        video_paths=input_files,
+                        modifications_salt=json.dumps({"winning_region": next(iter(poi_regions))}),
+                    ),
+                )
+                if scores_vectors_path is not None
+                else None
+            ),
+            num_output_frames=calculate_output_frames(duration=duration, output_fps=output_fps),
+            batch_size=batch_size_scores,
+            conversion_scoring_functions=conversion_scoring_functions,
+            deselection_radius_frames=scoring_deselection_radius_frames,
+            plot_path=plot_path,
+            gpus=gpus,
+        )
+
+        def output_frames() -> ImageSourceType:
+            """
+
+            :return:
+            """
+            for frame_index, frame in enumerate(
+                load_input_videos(  # Don't scale or buffer output frames.
+                    input_files=input_files, tqdm_desc="Reading Crop Output Frames"
+                ).frames
+            ):
+                if frame_index in scored_frames.winning_indices:
+                    yield frame
+
+        video_common.write_source_to_disk_consume(
+            source=output_frames(),
+            video_path=output_path,
+            video_fps=output_fps,
+            audio_paths=audio_paths,
+            high_quality=False,
         )
