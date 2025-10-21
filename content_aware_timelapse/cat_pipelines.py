@@ -17,10 +17,7 @@ from content_aware_timelapse.frames_to_vectors.conversion_types import (
     ConversionPOIsFunctions,
     ConversionScoringFunctions,
 )
-from content_aware_timelapse.frames_to_vectors.vector_points_of_interest import (
-    POICropResult,
-    crop_to_pois,
-)
+from content_aware_timelapse.frames_to_vectors.vector_points_of_interest import discover_poi_regions
 from content_aware_timelapse.frames_to_vectors.vector_scoring import reduce_frames_by_score
 from content_aware_timelapse.gpu_discovery import GPUDescription
 from content_aware_timelapse.vector_file import create_videos_signature
@@ -36,6 +33,7 @@ from content_aware_timelapse.viderator.viderator_types import (
     AspectRatio,
     ImageResolution,
     ImageSourceType,
+    RectangleRegion,
 )
 
 LOGGER = logging.getLogger(__name__)
@@ -274,35 +272,45 @@ def create_timelapse_crop_score(  # pylint: disable=too-many-locals,too-many-pos
 
     # Input video is read twice, this could be optimized.
 
-    poi_crop_result: POICropResult = crop_to_pois(
-        analysis_frames=preload_and_scale(
-            video_source=_CombinedVideos(
-                frames=primary_source.frames,
-                total_frame_count=primary_source.total_frame_count,
+    winning_region: RectangleRegion = next(
+        iter(
+            discover_poi_regions(
+                analysis_frames=preload_and_scale(
+                    video_source=_CombinedVideos(
+                        frames=primary_source.frames,
+                        total_frame_count=primary_source.total_frame_count,
+                        original_resolution=primary_source.original_resolution,
+                        original_fps=primary_source.original_fps,
+                    ),
+                    max_side_length=conversion_pois_functions.max_side_length,
+                    buffer_size=scaled_frames_buffer_size,
+                ).frames,
+                intermediate_info=(
+                    IntermediateFileInfo(
+                        path=pois_vectors_path,
+                        signature=create_videos_signature(
+                            video_paths=input_files, modifications_salt=None
+                        ),
+                    )
+                    if pois_vectors_path is not None
+                    else None
+                ),
+                batch_size=batch_size_pois,
+                source_frame_count=primary_source.total_frame_count,
+                conversion_pois_functions=conversion_pois_functions,
                 original_resolution=primary_source.original_resolution,
-                original_fps=primary_source.original_fps,
-            ),
-            max_side_length=conversion_pois_functions.max_side_length,
-            buffer_size=scaled_frames_buffer_size,
-        ).frames,
-        output_frames=load_input_videos(  # Don't scale or buffer output frames.
+                crop_resolution=crop_resolution,
+                gpus=gpus,
+                num_regions=1,
+            )
+        )
+    )
+
+    cropped_to_region: ImageSourceType = video_common.crop_source(
+        source=load_input_videos(  # Don't scale or buffer output frames.
             input_files=input_files, tqdm_desc="Reading Crop Output Frames"
         ).frames,
-        drawing_frames=None,
-        intermediate_info=(
-            IntermediateFileInfo(
-                path=pois_vectors_path,
-                signature=create_videos_signature(video_paths=input_files, modifications_salt=None),
-            )
-            if pois_vectors_path is not None
-            else None
-        ),
-        batch_size=batch_size_pois,
-        source_frame_count=primary_source.total_frame_count,
-        conversion_pois_functions=conversion_pois_functions,
-        original_resolution=primary_source.original_resolution,
-        crop_resolution=crop_resolution,
-        gpus=gpus,
+        region=winning_region,
     )
 
     # We need to consume the resulting cropped image source twice, so it is cached to disk
@@ -317,7 +325,7 @@ def create_timelapse_crop_score(  # pylint: disable=too-many-locals,too-many-pos
     with video_common.video_safe_temp_path() as video_safe_temp_path:
 
         cropped_for_scoring, cropped_for_output = iterator_on_disk.video_file_tee(
-            source=poi_crop_result.cropped_to_region,
+            source=cropped_to_region,
             copies=2,
             video_fps=primary_source.original_fps,
             intermediate_video_path=(
@@ -361,9 +369,7 @@ def create_timelapse_crop_score(  # pylint: disable=too-many-locals,too-many-pos
                         path=scores_vectors_path,
                         signature=create_videos_signature(
                             video_paths=input_files,
-                            modifications_salt=json.dumps(
-                                {"winning_region": poi_crop_result.winning_region}
-                            ),
+                            modifications_salt=json.dumps({"winning_region": winning_region}),
                         ),
                     )
                     if scores_vectors_path is not None

@@ -192,9 +192,7 @@ def draw_points_on_image(
 
     for point in points:
 
-        x, y = point
-
-        bbox = [x - radius, y - radius, x + radius, y + radius]
+        bbox = [point.x - radius, point.y - radius, point.x + radius, point.y + radius]
         draw.ellipse(bbox, fill=color, outline=color)
 
     # Always return NumPy array

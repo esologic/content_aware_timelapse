@@ -17,12 +17,10 @@ from content_aware_timelapse.frames_to_vectors.conversion_types import (
     IndexPointsOfInterest,
 )
 from content_aware_timelapse.gpu_discovery import GPUDescription
-from content_aware_timelapse.viderator import image_common, video_common
 from content_aware_timelapse.viderator.viderator_types import (
     ImageResolution,
     ImageSourceType,
     RectangleRegion,
-    RGBInt8ImageType,
     XYPoint,
 )
 
@@ -114,12 +112,30 @@ def _score_region(
     return float(total)
 
 
-def _top_regions(  # pylint: disable=too-many-locals,too-many-arguments,too-many-locals
+def _iou(region_a: RectangleRegion, region_b: RectangleRegion) -> float:
+    """Compute intersection-over-union between two regions."""
+    inter_left = max(region_a.left, region_b.left)
+    inter_top = max(region_a.top, region_b.top)
+    inter_right = min(region_a.right, region_b.right)
+    inter_bottom = min(region_a.bottom, region_b.bottom)
+
+    if inter_right <= inter_left or inter_bottom <= inter_top:
+        return 0.0
+
+    inter_area = (inter_right - inter_left) * (inter_bottom - inter_top)
+    area_a = (region_a.right - region_a.left) * (region_a.bottom - region_a.top)
+    area_b = (region_b.right - region_b.left) * (region_b.bottom - region_b.top)
+    union_area = area_a + area_b - inter_area
+    return inter_area / union_area if union_area > 0 else 0.0
+
+
+def _top_regions(  # pylint: disable=too-many-locals,too-many-arguments,too-many-locals,too-many-positional-arguments,too-many-branches
     points: List[_PointFrameCount],
     image_size: ImageResolution,
     region_resolution: ImageResolution,
     num_regions: int,
-    alpha: float,
+    alpha_points_frames: float,
+    max_overlap: float,
 ) -> List[RectangleRegion]:
     """
     Exhaustively find the top regions of size `region_size` anywhere in the image. Score each
@@ -127,14 +143,19 @@ def _top_regions(  # pylint: disable=too-many-locals,too-many-arguments,too-many
       - normalized unique point count in the region
       - normalized sum of frame counts in the region
 
+    The returned regions are the highest scoring while ensuring that the overlap between any two
+    selected regions does not exceed `max_overlap` (fractional IoU).
+
     :param points: Points of interest within the frame. This list of NTs contains the coordinates
-    of those points and the number of frames they appear in.
+      of those points and the number of frames they appear in.
     :param image_size: Size of the image that the POIs exist in.
     :param region_resolution: The desired size of the output region.
     :param num_regions: Every possible region in the image will be considered, but only the top
-    number of regions will be returned.
-    :param alpha: relative weight of unique points vs frame counts. 0.0 = only frame counts,
-    1.0 = only unique points.
+      number of regions will be returned.
+    :param alpha_points_frames: Relative weight of unique points vs frame counts. 0.0 = only frame
+    counts, 1.0 = only unique points.
+    :param max_overlap: Maximum allowed fractional overlap (IoU) between any two output regions.
+      A value of 0 means no overlap, 1 means overlap is fully allowed.
     :return: A list of regions sorted by score with the highest scoring region first.
     """
 
@@ -180,12 +201,13 @@ def _top_regions(  # pylint: disable=too-many-locals,too-many-arguments,too-many
     max_frame = max(r[0] for r in region_scores)
     max_unique = max(r[1] for r in region_scores)
 
+    # This variable will hold every possible region of the given size within the source image.
     scored_regions: List[_ScoredRegion] = []
 
     for frame_sum, unique_sum, region in region_scores:
         frame_norm = frame_sum / max_frame if max_frame > 0 else 0
         unique_norm = unique_sum / max_unique if max_unique > 0 else 0
-        score = alpha * unique_norm + (1 - alpha) * frame_norm
+        score = alpha_points_frames * unique_norm + (1 - alpha_points_frames) * frame_norm
         scored_regions.append(
             _ScoredRegion(
                 score=score,
@@ -194,24 +216,25 @@ def _top_regions(  # pylint: disable=too-many-locals,too-many-arguments,too-many
         )
 
     # Sort by normalized blended score
-    scored_regions.sort(key=lambda x: x.score, reverse=True)
-    return [r.region for r in scored_regions[:num_regions]]
+    scored_regions = sorted(scored_regions, key=lambda x: x.score, reverse=True)
+
+    # Select top regions with overlap constraint
+    selected_regions: List[RectangleRegion] = []
+    for scored in scored_regions:
+        if not selected_regions:
+            selected_regions.append(scored.region)
+        else:
+            overlaps = [_iou(scored.region, prev) for prev in selected_regions]
+            if all(ov <= max_overlap for ov in overlaps):
+                selected_regions.append(scored.region)
+        if len(selected_regions) >= num_regions:
+            break
+
+    return selected_regions
 
 
-class POICropResult(NamedTuple):
-    """
-    Output of the POI crop process.
-    """
-
-    winning_region: RectangleRegion
-    cropped_to_region: ImageSourceType
-    visualization: Optional[ImageSourceType]
-
-
-def crop_to_pois(  # pylint: disable=too-many-arguments,too-many-positional-arguments,too-many-locals
+def discover_poi_regions(  # pylint: disable=too-many-arguments,too-many-positional-arguments,too-many-locals
     analysis_frames: ImageSourceType,
-    output_frames: ImageSourceType,
-    drawing_frames: Optional[ImageSourceType],
     intermediate_info: Optional[IntermediateFileInfo],
     batch_size: int,
     source_frame_count: int,
@@ -219,7 +242,10 @@ def crop_to_pois(  # pylint: disable=too-many-arguments,too-many-positional-argu
     original_resolution: ImageResolution,
     crop_resolution: ImageResolution,
     gpus: Tuple[GPUDescription, ...],
-) -> POICropResult:
+    num_regions: int,
+    alpha_points_frames: float = 0.8,
+    max_overlap: float = 0,
+) -> Tuple[RectangleRegion, ...]:
     """
     Crops an input video to a region of that video that is the most interesting using points of
     interest analysis.
@@ -281,59 +307,13 @@ def crop_to_pois(  # pylint: disable=too-many-arguments,too-many-positional-argu
         drop_frame_threshold=0.7,
     )
 
-    winning_region = next(
-        iter(
-            _top_regions(
-                points=winning_points_and_counts,
-                image_size=original_resolution,
-                region_resolution=crop_resolution,
-                num_regions=1,
-                alpha=0.8,
-            )
+    return tuple(
+        _top_regions(
+            points=winning_points_and_counts,
+            image_size=original_resolution,
+            region_resolution=crop_resolution,
+            num_regions=num_regions,
+            alpha_points_frames=alpha_points_frames,
+            max_overlap=max_overlap,
         )
-    )
-
-    cropped_to_region: ImageSourceType = video_common.crop_source(
-        source=output_frames, region=winning_region
-    )
-
-    visualization: Optional[ImageSourceType] = None
-
-    if drawing_frames is not None:
-
-        winning_points = {
-            points_and_counts.point for points_and_counts in winning_points_and_counts
-        }
-
-        def render_visualization_frame(
-            frame: RGBInt8ImageType, frame_pois: IndexPointsOfInterest
-        ) -> RGBInt8ImageType:
-            """
-            Draw visualization info onto the frame.
-            :param frame: To modify.
-            :param frame_pois: To draw onto the image.
-            :return: Viz frame.
-            """
-
-            return image_common.draw_regions_on_image(
-                regions=[winning_region],
-                image=image_common.draw_points_on_image(
-                    points=[
-                        point
-                        for point in frame_pois["points_of_interest"]
-                        if point in winning_points
-                    ],
-                    image=frame,
-                ),
-            )
-
-        visualization = (
-            render_visualization_frame(frame, score)
-            for score, frame in zip(points_of_interest, drawing_frames)
-        )
-
-    return POICropResult(
-        winning_region=winning_region,
-        cropped_to_region=cropped_to_region,
-        visualization=visualization,
     )
