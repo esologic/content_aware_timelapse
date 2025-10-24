@@ -1,5 +1,13 @@
 # Changelog
 
+0.11.0 - (2025-10-24)
+------------------
+
+* Moved a bunch of UI code into a library module so it can be consumed in other packages.
+* Dropped vidgear as an ffmpeg interface.
+* GPU resources are freed after timelapses are created.
+
+
 0.10.0 - (2025-10-21)
 ------------------
 

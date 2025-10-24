@@ -25,6 +25,7 @@ from content_aware_timelapse.frames_to_vectors.vector_computation.compute_vector
     CONVERT_SCORE_VIT_ATTENTION,
     CONVERT_SCORE_VIT_CLS,
 )
+from content_aware_timelapse.frames_to_vectors.vector_scoring import ScoredFrames
 from content_aware_timelapse.gpu_discovery import discover_gpus
 from content_aware_timelapse.viderator import image_common
 from content_aware_timelapse.viderator.viderator_types import ImageSourceType
@@ -75,12 +76,16 @@ def test_sorting_scored_vectors(
         )
     )
 
-    indices = vector_scoring._score_and_sort_frames(  # pylint: disable=protected-access
-        score_weights=conversion_scoring_functions.weights,
-        index_scores=score_indexes,
-        num_output_frames=len(score_indexes) - 2,
-        plot_path=None,
-        deselection_radius_frames=0,
+    scored_frames: ScoredFrames = (
+        vector_scoring._score_and_sort_frames(  # pylint: disable=protected-access
+            score_weights=conversion_scoring_functions.weights,
+            index_scores=score_indexes,
+            num_output_frames=len(score_indexes) - 2,
+            plot_path=None,
+            deselection_radius_frames=0,
+        )
     )
 
-    assert indices == list(sorted(indices, reverse=True))
+    assert scored_frames.winning_indices == list(
+        sorted(scored_frames.winning_indices, reverse=True)
+    )

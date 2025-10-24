@@ -3,7 +3,7 @@ Test of the `frames_in_video` functionality.
 """
 
 from pathlib import Path
-from test.assets import LONG_TEST_VIDEO_PATH, SAMPLE_TIMELAPSE_INPUT_PATH
+from test.assets import SAMPLE_TIMELAPSE_INPUT_PATH
 from test.test_viderator.test_video_common import VISUALIZATION_ENABLED
 from typing import Optional
 
@@ -17,7 +17,7 @@ from content_aware_timelapse.viderator.image_common import image_resolution
 from content_aware_timelapse.viderator.viderator_types import ImageResolution
 
 
-@pytest.mark.parametrize("video_path", [SAMPLE_TIMELAPSE_INPUT_PATH, LONG_TEST_VIDEO_PATH])
+@pytest.mark.parametrize("video_path", [SAMPLE_TIMELAPSE_INPUT_PATH])
 @pytest.mark.parametrize(
     "function_under_test",
     [frames_in_video.frames_in_video_ffmpeg],

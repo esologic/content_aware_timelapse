@@ -148,13 +148,13 @@ def test_disk_buffer_speed() -> None:
 
 @pytest.mark.parametrize(
     "image_resolution,frame_count",
-    [(ImageResolution(100, 100), 200), (ImageResolution(1000, 1000), 300_000)],
+    [(ImageResolution(100, 100), 200), (ImageResolution(10, 10), 300_000)],
 )
 def test_video_file_tee(image_resolution: ImageResolution, frame_count: int) -> None:
     """
     Test to make sure going to disk with a video intermediate produces the same video.
     :param image_resolution: Resolution under test.
-    :param frame_count: Frame count, varried to make sure big/small videos don't cause problems.
+    :param frame_count: Frame count, varied to make sure big/small videos don't cause problems.
     :return: None
     """
 

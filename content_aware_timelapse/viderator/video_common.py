@@ -6,6 +6,8 @@ import logging
 import math
 import os
 import pprint
+import select
+import subprocess
 import tempfile
 from contextlib import contextmanager
 from pathlib import Path
@@ -16,7 +18,6 @@ import ffmpeg
 import more_itertools
 import numpy as np
 from ffmpeg.nodes import FilterableStream
-from vidgear.gears import WriteGear
 
 from content_aware_timelapse.viderator import image_common
 from content_aware_timelapse.viderator.iterator_common import first_item_from_iterator
@@ -116,27 +117,60 @@ def _create_video_writer_resolution(
     :param video_path: Resulting file path.
     :param video_fps: FPS of the video.
     :param resolution: Size of the resulting video.
-    :param high_quality: If true, `ffmpeg` will be invoked directly via the VidGears library,
-    this will create a much larger, much higher quality output.
+    :param high_quality: If true, `ffmpeg` will be invoked directly this will create a much larger,
+    much higher quality output.
     :return: The writer.
     """
 
     if high_quality:
-        # Tries to best match YouTube's compression.
-        # See: https://video.stackexchange.com/a/24481
-        output_params = {
-            "-input_framerate": video_fps,
-            "-vf": f"yadif,scale={resolution.width}:{resolution.height}",
-            "-vcodec": "libx264",
-            "-crf": 18,
-            "-bf": 2,
-            "-use_editlist": 0,
-            "-movflags": "+faststart",
-        }
+        ffmpeg_cmd = [
+            "ffmpeg",
+            "-y",
+            "-f",
+            "rawvideo",
+            "-vcodec",
+            "rawvideo",
+            "-pix_fmt",
+            "bgr24",
+            "-s",
+            f"{resolution.width}x{resolution.height}",
+            "-r",
+            str(video_fps),
+            "-i",
+            "-",
+            "-vf",
+            f"yadif,scale={resolution.width}:{resolution.height}",
+            "-vcodec",
+            "libx264",
+            "-profile:v",
+            "high",
+            "-pix_fmt",
+            "yuv420p",
+            "-color_range",
+            "2",
+            "-crf",
+            "14",
+            "-preset",
+            "veryslow",
+            "-tune",
+            "film",
+            "-bf",
+            "2",
+            "-g",
+            "250",
+            "-movflags",
+            "+faststart",
+            str(video_path),
+        ]
 
-        ffmpeg_writer = WriteGear(
-            output=str(video_path), compression_mode=True, logging=False, **output_params
+        ffmpeg_proc = subprocess.Popen(  # pylint: disable=consider-using-with
+            ffmpeg_cmd,
+            stdin=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+            bufsize=0,  # unbuffered — we manage backpressure manually
         )
+
+        stdin_fd = ffmpeg_proc.stdin.fileno()
 
         def write_frame(image: RGBInt8ImageType) -> None:
             """
@@ -144,16 +178,25 @@ def _create_video_writer_resolution(
             :param image: To write.
             :return: None
             """
-            try:
-                ffmpeg_writer.write(image)
-            except Exception as e:
-                LOGGER.exception(f"Ran into problem writing frame: {image}")
-                raise e
+            if image.shape[1] != resolution.width or image.shape[0] != resolution.height:
+                raise ValueError("Incoming frame did not match output resolution!")
+            if image.dtype != np.uint8:
+                raise ValueError("Input image must be uint8.")
 
-        return VideoOutputController(
-            write=write_frame,
-            release=ffmpeg_writer.close,
-        )
+            # Wait until the pipe is ready for writing
+            select.select([], [stdin_fd], [])
+            ffmpeg_proc.stdin.write(image.tobytes())
+
+        def release() -> None:
+            """
+            Closes the output stream.
+            :return: None
+            """
+            if ffmpeg_proc.stdin:
+                ffmpeg_proc.stdin.close()
+            ffmpeg_proc.wait()
+
+        return VideoOutputController(write=write_frame, release=release)
 
     else:
         opencv_writer = cv2.VideoWriter(

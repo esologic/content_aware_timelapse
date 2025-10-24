@@ -4,7 +4,7 @@ CLI-specific functionality.
 
 from enum import Enum
 from pathlib import Path
-from typing import Callable, Dict, Optional, ParamSpec, TypeVar
+from typing import Callable, Dict, Optional, TypeVar
 
 import click
 from click import Context, Parameter
@@ -26,10 +26,7 @@ from content_aware_timelapse.gpu_discovery import discover_gpus
 
 # A generic type variable for Enum subclasses, essentially any enum subclass.
 E = TypeVar("E", bound=Enum)
-
-
 T = TypeVar("T")
-P = ParamSpec("P")  # ParamSpec for the original function
 
 
 def create_enum_option(
