@@ -28,6 +28,7 @@ from content_aware_timelapse.frames_to_vectors.conversion_types import (
     ScoreWeights,
     XYPoint,
 )
+from content_aware_timelapse.frames_to_vectors.vector_computation import gpu_model_management
 from content_aware_timelapse.gpu_discovery import GPUDescription
 from content_aware_timelapse.viderator.viderator_types import (
     ImageResolution,
@@ -267,12 +268,16 @@ def _compute_vectors_vit(
     if track_memory_usage:
         summary_tracker = SummaryTracker()  # type:ignore[no-untyped-call]
 
-    # Create a single thread pool for all image batches
-    with ThreadPoolExecutor(max_workers=len(models)) as e:
-        for batch in more_itertools.chunked(frame_batches, len(models)):
-            yield from images_to_feature_vectors(batch, e)
-            if summary_tracker is not None:
-                summary_tracker.print_diff()  # type:ignore[no-untyped-call]
+    with gpu_model_management.gpu_cleanup(models=models):
+
+        # Create a single thread pool for all image batches
+        # GPU parallel consumption is achieved in a hacky way here, by splitting the input batches
+        # into n lists where n is the number of GPUS, then giving each CPU and sub list to a thread.
+        with ThreadPoolExecutor(max_workers=len(models)) as e:
+            for batch in more_itertools.chunked(frame_batches, len(models)):
+                yield from images_to_feature_vectors(batch, e)
+                if summary_tracker is not None:
+                    summary_tracker.print_diff()  # type:ignore[no-untyped-call]
 
 
 def _calculate_scores_vit_cls(packed: Tuple[int, npt.NDArray[np.float16]]) -> IndexScores:

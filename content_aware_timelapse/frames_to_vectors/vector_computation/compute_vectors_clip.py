@@ -18,6 +18,7 @@ from content_aware_timelapse.frames_to_vectors.conversion_types import (
     IndexScores,
     ScoreWeights,
 )
+from content_aware_timelapse.frames_to_vectors.vector_computation import gpu_model_management
 from content_aware_timelapse.gpu_discovery import GPUDescription
 from content_aware_timelapse.viderator.viderator_types import RGBInt8ImageType
 
@@ -103,10 +104,14 @@ def _compute_vectors_clip(
             yield from future.result().cpu().numpy()
             LOGGER.debug(f"Processed image batch #{index} using CLIP.")
 
-    # Thread pool for parallel GPU processing
-    with ThreadPoolExecutor(max_workers=len(models)) as e:
-        for batch in more_itertools.chunked(frame_batches, len(models)):
-            yield from images_to_feature_vectors(batch, e)
+    with gpu_model_management.gpu_cleanup(models=[m_f[0] for m_f in models]):
+        # Create a single thread pool for all image batches
+        # GPU parallel consumption is achieved in a hacky way here, by splitting the input batches
+        # into n lists where n is the number of GPUS, then giving each CPU and sub list to a thread.
+        # Thread pool for parallel GPU processing
+        with ThreadPoolExecutor(max_workers=len(models)) as e:
+            for batch in more_itertools.chunked(frame_batches, len(models)):
+                yield from images_to_feature_vectors(batch, e)
 
 
 def _calculate_scores_clip(packed: Tuple[int, npt.NDArray[np.float16]]) -> IndexScores:
