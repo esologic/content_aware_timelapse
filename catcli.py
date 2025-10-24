@@ -2,21 +2,15 @@
 
 import itertools
 import logging
-from enum import Enum
 from pathlib import Path
 from typing import List, Optional, Tuple
 
 import click
 
-from content_aware_timelapse import cat_pipelines
-from content_aware_timelapse.cli_common import create_enum_option
-from content_aware_timelapse.frames_to_vectors.vector_computation.compute_vectors_clip import (
-    CONVERT_CLIP,
-)
-from content_aware_timelapse.frames_to_vectors.vector_computation.compute_vectors_vit import (
-    CONVERT_POIS_VIT_ATTENTION,
-    CONVERT_SCORE_VIT_ATTENTION,
-    CONVERT_SCORE_VIT_CLS,
+from content_aware_timelapse import cat_pipelines, catcli_ui
+from content_aware_timelapse.frames_to_vectors.conversion_types import (
+    ConversionPOIsFunctions,
+    ConversionScoringFunctions,
 )
 from content_aware_timelapse.gpu_discovery import GPUDescription, discover_gpus
 from content_aware_timelapse.viderator import video_common
@@ -38,126 +32,6 @@ logging.basicConfig(
 LOGGER = logging.getLogger(__name__)
 
 
-class VectorBackendScores(str, Enum):
-    """
-    For the CLI, string representations of the different vectorization backends.
-    """
-
-    vit_cls = "vit-cls"
-    vit_attention = "vit-attention"
-    clip = "clip"
-
-
-class VectorBackendPOIs(str, Enum):
-    """
-    For the CLI, string representations of the different Point of Interest backends.
-    """
-
-    vit_attention = "vit-attention"
-
-
-input_files_arg = click.option(
-    "--input",
-    "-i",
-    "input_files",
-    type=click.Path(exists=True, file_okay=True, dir_okay=False, readable=True, path_type=Path),
-    help="Input file(s). Can be given multiple times.",
-    required=True,
-    multiple=True,
-)
-
-output_path_arg = click.option(
-    "--output-path",
-    "-o",
-    type=click.Path(exists=False, file_okay=True, dir_okay=False, writable=True, path_type=Path),
-    help="Output will be written to this file.",
-    required=True,
-)
-
-duration_arg = click.option(
-    "--duration",
-    "-d",
-    type=click.FloatRange(min=1),
-    help="Desired duration of the output video in seconds.",
-    required=True,
-    default=30.0,
-    show_default=True,
-)
-
-output_fps_arg = click.option(
-    "--output-fps",
-    "-f",
-    type=click.FloatRange(min=1),
-    help="Desired frames/second of the output video.",
-    required=True,
-    default=60.0,
-    show_default=True,
-)
-
-# Content-aware parameters
-
-buffer_size_arg = click.option(
-    "--buffer-size",
-    "-bu",
-    type=click.IntRange(min=0),
-    help=(
-        "The number of frames to load into an in-memory buffer. "
-        "This makes sure the GPUs have fast access to more frames rather than have the GPU "
-        "waiting on disk/network IO."
-    ),
-    required=False,
-    default=0,
-    show_default=True,
-)
-
-
-viz_path_arg = click.option(
-    "--viz-path",
-    "-z",
-    type=click.Path(file_okay=True, dir_okay=False, writable=True, path_type=Path),
-    help=(
-        "A visualisation describing the timelapse creation "
-        "process will be written to this path if given"
-    ),
-    required=False,
-)
-
-deselect_arg = click.option(
-    "--deselect",
-    "-de",
-    type=click.IntRange(min=0),
-    help="Frames surrounding high scores will be dropped by a radius that starts with this value.",
-    required=False,
-    default=1000,
-    show_default=True,
-)
-
-audio_paths_arg = click.option(
-    "--audio",
-    "-a",
-    type=click.Path(file_okay=True, exists=True, dir_okay=False, writable=True, path_type=Path),
-    help="If given, these audio(s) will be added to the resulting video.",
-    required=False,
-    multiple=True,
-)
-
-gpus_arg = click.option(
-    "--gpu",
-    "-g",
-    type=click.Choice(choices=discover_gpus()),
-    help="The GPU(s) to use for computation. Can be given multiple times.",
-    required=False,
-    multiple=True,
-)
-
-
-_CONVERSION_SCORING_FUNCTIONS_LOOKUP = {
-    VectorBackendScores.vit_cls: CONVERT_SCORE_VIT_CLS,
-    VectorBackendScores.vit_attention: CONVERT_SCORE_VIT_ATTENTION,
-    VectorBackendScores.clip: CONVERT_CLIP,
-}
-
-
 @click.group()
 def cli() -> None:
     """
@@ -175,37 +49,18 @@ def cli() -> None:
         "then selects the best frames."
     )
 )
-@input_files_arg
-@output_path_arg
-@duration_arg
-@output_fps_arg
-@click.option(
-    "--batch-size",
-    "-ba",
-    type=click.IntRange(min=1),
-    help="Frames are sent to GPU for processing in batches of this size.",
-    required=True,
-    default=600,
-    show_default=True,
-)
-@buffer_size_arg
-@create_enum_option(
-    arg_flag="--backend",
-    help_message="Sets which vectorization backend is used to score the frames.",
-    default=VectorBackendScores.vit_cls,
-    input_enum=VectorBackendScores,
-)
-@deselect_arg
-@audio_paths_arg
-@click.option(
-    "--vectors-path",
-    "-v",
-    type=click.Path(file_okay=True, dir_okay=False, writable=True, path_type=Path),
-    help="Intermediate vectors will be written to this path. Can be used to re-run.",
-    required=False,
-)
-@viz_path_arg
-@gpus_arg
+@catcli_ui.input_files_arg
+@catcli_ui.output_path_arg
+@catcli_ui.duration_arg
+@catcli_ui.output_fps_arg
+@catcli_ui.batch_size_scores_arg
+@catcli_ui.frame_buffer_size_arg
+@catcli_ui.backend_scores_arg
+@catcli_ui.deselect_arg
+@catcli_ui.audio_paths_arg
+@catcli_ui.vectors_path_scores_arg
+@catcli_ui.viz_path_arg
+@catcli_ui.gpus_arg
 @click.option(
     "--best-frame-path",
     "-bf",
@@ -221,12 +76,12 @@ def content(  # pylint: disable=too-many-locals,too-many-positional-arguments,to
     output_path: Path,
     duration: float,
     output_fps: float,
-    batch_size: int,
-    buffer_size: Optional[int],
-    backend: VectorBackendScores,
+    batch_size_scores: int,
+    frame_buffer_size: Optional[int],
+    backend_scores: ConversionScoringFunctions,
     deselect: int,
     audio: List[Path],
-    vectors_path: Optional[Path],
+    vectors_path_scores: Optional[Path],
     viz_path: Optional[Path],
     best_frame_path: Optional[Path],
     gpu: Optional[Tuple[GPUDescription, ...]],
@@ -240,12 +95,12 @@ def content(  # pylint: disable=too-many-locals,too-many-positional-arguments,to
     :param output_path: See click docs.
     :param duration: See click docs.
     :param output_fps: See click docs.
-    :param batch_size: See click docs.
-    :param buffer_size: See click docs.
-    :param backend: See click docs.
+    :param batch_size_scores: See click docs.
+    :param frame_buffer_size: See click docs.
+    :param backend_scores: See click docs.
     :param deselect: See click docs.
     :param audio: See click docs.
-    :param vectors_path: See click docs.
+    :param vectors_path_scores: See click docs.
     :param viz_path: See click docs.
     :param gpu: See click docs.
     :param best_frame_path: See click docs.
@@ -257,19 +112,16 @@ def content(  # pylint: disable=too-many-locals,too-many-positional-arguments,to
         output_path=output_path,
         duration=duration,
         output_fps=output_fps,
-        batch_size=batch_size,
-        buffer_size=buffer_size,
-        conversion_scoring_functions=_CONVERSION_SCORING_FUNCTIONS_LOOKUP[backend],
+        batch_size=batch_size_scores,
+        buffer_size=frame_buffer_size,
+        conversion_scoring_functions=backend_scores,
         deselection_radius_frames=deselect,
         audio_paths=audio,
-        vectors_path=vectors_path,
+        vectors_path=vectors_path_scores,
         plot_path=viz_path,
         gpus=gpu if gpu else discover_gpus(),
         best_frame_path=best_frame_path,
     )
-
-
-_CONVERSION_POIS_FUNCTIONS_LOOKUP = {VectorBackendPOIs.vit_attention: CONVERT_POIS_VIT_ATTENTION}
 
 
 @cli.command(
@@ -278,44 +130,21 @@ _CONVERSION_POIS_FUNCTIONS_LOOKUP = {VectorBackendPOIs.vit_attention: CONVERT_PO
         "then selects the best frames of cropped region."
     )
 )
-@input_files_arg
-@output_path_arg
-@duration_arg
-@output_fps_arg
-@click.option(
-    "--batch-size-pois",
-    "-bp",
-    type=click.IntRange(min=1),
-    help=(
-        "Scaled frames for Points of Interest calculation are sent to GPU for"
-        " processing in batches of this size."
-    ),
-    required=True,
-    default=600,
-    show_default=True,
-)
-@click.option(
-    "--batch-size-scores",
-    "-bs",
-    type=click.IntRange(min=1),
-    help="Scaled frames for scoring are sent to GPU for processing in batches of this size.",
-    required=True,
-    default=600,
-    show_default=True,
-)
-@buffer_size_arg
-@create_enum_option(
-    arg_flag="--backend-pois",
-    help_message="Sets which Points of Interest discovery backend is used.",
-    default=VectorBackendPOIs.vit_attention,
-    input_enum=VectorBackendPOIs,
-)
-@create_enum_option(
-    arg_flag="--backend-scores",
-    help_message="Sets which scoring backend is used.",
-    default=VectorBackendScores.vit_cls,
-    input_enum=VectorBackendScores,
-)
+@catcli_ui.input_files_arg
+@catcli_ui.output_path_arg
+@catcli_ui.duration_arg
+@catcli_ui.output_fps_arg
+@catcli_ui.batch_size_pois_arg
+@catcli_ui.batch_size_scores_arg
+@catcli_ui.frame_buffer_size_arg
+@catcli_ui.backend_scores_arg
+@catcli_ui.backend_pois_arg
+@catcli_ui.deselect_arg
+@catcli_ui.audio_paths_arg
+@catcli_ui.vectors_path_pois_arg
+@catcli_ui.vectors_path_scores_arg
+@catcli_ui.viz_path_arg
+@catcli_ui.gpus_arg
 @click.option(
     "--aspect-ratio",
     "-r",
@@ -323,24 +152,6 @@ _CONVERSION_POIS_FUNCTIONS_LOOKUP = {VectorBackendPOIs.vit_attention: CONVERT_PO
     required=True,
     help="Aspect ratio in the format WIDTH:HEIGHT (e.g., 16:9, 4:3, 1.85:1).",
 )
-@deselect_arg
-@audio_paths_arg
-@click.option(
-    "--vectors-path-pois",
-    "-vp",
-    type=click.Path(file_okay=True, dir_okay=False, writable=True, path_type=Path),
-    help="Intermediate POI vectors will be written to this path. Can be used to re-run.",
-    required=False,
-)
-@click.option(
-    "--vectors-path-scores",
-    "-vs",
-    type=click.Path(file_okay=True, dir_okay=False, writable=True, path_type=Path),
-    help="Intermediate scoring vectors will be written to this path. Can be used to re-run.",
-    required=False,
-)
-@viz_path_arg
-@gpus_arg
 @click.option(
     "--layout",
     "-lo",
@@ -362,9 +173,9 @@ def content_cropped(  # pylint: disable=too-many-locals,too-many-positional-argu
     output_fps: float,
     batch_size_pois: int,
     batch_size_scores: int,
-    buffer_size: Optional[int],
-    backend_pois: VectorBackendPOIs,
-    backend_scores: VectorBackendScores,
+    frame_buffer_size: Optional[int],
+    backend_pois: ConversionPOIsFunctions,
+    backend_scores: ConversionScoringFunctions,
     aspect_ratio: AspectRatio,
     deselect: int,
     audio: List[Path],
@@ -385,7 +196,7 @@ def content_cropped(  # pylint: disable=too-many-locals,too-many-positional-argu
     :param output_fps: See click docs.
     :param batch_size_pois: See click docs.
     :param batch_size_scores: See click docs.
-    :param buffer_size: See click docs.
+    :param frame_buffer_size: See click docs.
     :param backend_pois: See click docs.
     :param backend_scores: See click docs.
     :param aspect_ratio: See click docs.
@@ -406,9 +217,9 @@ def content_cropped(  # pylint: disable=too-many-locals,too-many-positional-argu
         output_fps=output_fps,
         batch_size_pois=batch_size_pois,
         batch_size_scores=batch_size_scores,
-        scaled_frames_buffer_size=buffer_size,
-        conversion_pois_functions=_CONVERSION_POIS_FUNCTIONS_LOOKUP[backend_pois],
-        conversion_scoring_functions=_CONVERSION_SCORING_FUNCTIONS_LOOKUP[backend_scores],
+        scaled_frames_buffer_size=frame_buffer_size,
+        conversion_pois_functions=backend_pois,
+        conversion_scoring_functions=backend_scores,
         aspect_ratio=aspect_ratio,
         scoring_deselection_radius_frames=deselect,
         audio_paths=audio,
@@ -426,11 +237,11 @@ def content_cropped(  # pylint: disable=too-many-locals,too-many-positional-argu
         "desired output length is reached."
     )
 )
-@input_files_arg
-@output_path_arg
-@duration_arg
-@output_fps_arg
-@audio_paths_arg
+@catcli_ui.input_files_arg
+@catcli_ui.output_path_arg
+@catcli_ui.duration_arg
+@catcli_ui.output_fps_arg
+@catcli_ui.audio_paths_arg
 def classic(  # pylint: disable=too-many-locals
     input_files: List[Path],
     output_path: Path,
