@@ -11,7 +11,7 @@ import subprocess
 import tempfile
 from contextlib import contextmanager
 from pathlib import Path
-from typing import Callable, Iterator, List, NamedTuple, Optional, Union, cast
+from typing import Callable, Iterator, List, NamedTuple, Optional, Tuple, Union, cast
 
 import cv2
 import ffmpeg
@@ -527,3 +527,66 @@ def video_safe_temp_path(suffix: str = ".mp4") -> Iterator[Path]:
             video_path.unlink(missing_ok=True)
         except Exception:  # pylint: disable=broad-except
             pass
+
+
+def concat_videos_for_youtube(video_paths: Tuple[Path, ...], output_path: Path) -> None:
+    """
+    Concatenates videos from disk and writes them to an output location, re-encoding them with
+    the optimal settings for uploading to YouTube.
+
+    :param video_paths: Videos to concatenate as a tuple.
+    :param output_path: Destination path.
+    :return: None
+    :raises ValueError: If any of the videos are missing or have mismatched resolution/fps, or
+    are duplicates!
+    """
+
+    if not video_paths:
+        raise ValueError("No input files provided.")
+
+    # Resolve input paths and check existence
+    resolved_paths = [p.absolute() for p in video_paths]
+
+    for p in resolved_paths:
+        if not p.exists():
+            raise ValueError(f"Input file {p} does not exist.")
+
+    # Check for duplicates
+    if len(resolved_paths) != len(set(resolved_paths)):
+        raise ValueError("Duplicate input files are not allowed.")
+
+    # Check that all videos have the same resolution and fps
+    widths, heights, fps_set = set(), set(), set()
+
+    for f in resolved_paths:
+        stream = ffmpeg.probe(str(f), select_streams="v")["streams"][0]
+        widths.add(int(stream["width"]))
+        heights.add(int(stream["height"]))
+        a, b = stream["r_frame_rate"].split("/")
+        fps_set.add(float(int(a) / int(b)))
+
+    if len(widths) > 1 or len(heights) > 1 or len(fps_set) > 1:
+        raise ValueError(
+            "Input files need to have the same resolution and fps. "
+            f"Widths: {widths}, Heights: {heights}, FPS: {fps_set}"
+        )
+
+    # Create a temporary file listing the videos for ffmpeg concat demuxer
+    with tempfile.NamedTemporaryFile("w", delete=True, suffix=".txt") as list_file:
+
+        for f in resolved_paths:
+            list_file.write(f"file '{f}'\n")
+
+        list_file.flush()
+
+        # Re-encode using high-quality settings for YouTube
+        ffmpeg.input(str(Path(list_file.name)), format="concat", safe=0).output(
+            str(output_path),
+            vcodec="libx264",
+            crf=18,  # visually lossless
+            preset="slow",  # slower preset for better compression
+            pix_fmt="yuv420p",  # compatible pixel format
+            acodec="aac",
+            audio_bitrate="192k",
+            movflags="+faststart",  # allows progressive playback
+        ).run(overwrite_output=True, quiet=True)

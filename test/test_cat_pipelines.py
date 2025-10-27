@@ -24,8 +24,6 @@ from content_aware_timelapse.viderator import frames_in_video
 from content_aware_timelapse.viderator.image_common import load_rgb_image
 from content_aware_timelapse.viderator.viderator_types import AspectRatio
 
-CURRENT_DIRECTORY = Path(__file__).parent.resolve()
-
 
 @pytest.mark.parametrize("buffer_size", [0, 100])
 @pytest.mark.parametrize("batch_size", [50, 100])
@@ -38,12 +36,15 @@ def test_create_timelapse_score(
     buffer_size: int,
     batch_size: int,
     conversion_scoring_functions: ConversionScoringFunctions,
+    artifact_root: Path,
 ) -> None:
     """
     Using a test asset, runs the main `create_timelapse` function and inspects the output.
     :param buffer_size: Passed to function.
     :param batch_size: Passed to function.
     :param tmpdir: Test fixture.
+    :param artifact_root: Test fixture that provides an optionally persisted directory to write
+    test assets to.
     :return: None
     """
 
@@ -66,7 +67,7 @@ def test_create_timelapse_score(
         deselection_radius_frames=10,
         audio_paths=[SAMPLE_AUDIO_PATH],
         gpus=discover_gpus(),
-        best_frame_path=Path(tmpdir) / "best_frame.png",
+        best_frame_path=artifact_root / "best_frame.png",
     )
 
     video_frames = frames_in_video.frames_in_video_opencv(
@@ -90,20 +91,23 @@ def test_create_timelapse_score(
 def test_create_timelapse_score_output(
     conversion_scoring_functions: ConversionScoringFunctions,
     best_frame_enabled: bool,
+    artifact_root: Path,
 ) -> None:
     """
     Create timelapses using the supported conversion functions, and write the output to a local
     folder so it can be reviewed. Obviously we don't want to commit the resulting videos, but it's
     good to visually see the results.
+    :param artifact_root: Test fixture that provides an optionally persisted directory to write
+    test assets to.
     :return: None
     """
 
     test_time = datetime.now().strftime("%Y%m%d_%H%M%S")
 
-    output_path = CURRENT_DIRECTORY / f"{conversion_scoring_functions.name}_{test_time}.mp4"
+    output_path = artifact_root / f"{conversion_scoring_functions.name}_{test_time}.mp4"
 
     best_frame_path: Optional[Path] = (
-        (CURRENT_DIRECTORY / f"{conversion_scoring_functions.name}_best_frame_{test_time}.png")
+        (artifact_root / f"{conversion_scoring_functions.name}_best_frame_{test_time}.png")
         if best_frame_enabled
         else None
     )

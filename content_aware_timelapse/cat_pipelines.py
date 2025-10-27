@@ -273,21 +273,27 @@ def create_timelapse_crop_score(  # pylint: disable=too-many-locals,too-many-pos
 
     num_regions: int = len(list(itertools.chain.from_iterable(layout_matrix)))
 
-    primary_source = load_input_videos(input_files=input_files, tqdm_desc="Reading POI Frames")
-
-    crop_resolution = image_common.largest_fitting_region(
-        source_resolution=primary_source.original_resolution, aspect_ratio=aspect_ratio
+    poi_discovery_source: _CombinedVideos = load_input_videos(
+        input_files=input_files, tqdm_desc="Reading Frames for POI Discovery"
+    )
+    scoring_source: _CombinedVideos = load_input_videos(
+        input_files=input_files, tqdm_desc="Reading Frames to Crop and Score"
+    )
+    output_source: _CombinedVideos = load_input_videos(
+        input_files=input_files, tqdm_desc="Reading Frames for Output."
     )
 
-    # Input video is read twice, this could be optimized.
+    crop_resolution = image_common.largest_fitting_region(
+        source_resolution=poi_discovery_source.original_resolution, aspect_ratio=aspect_ratio
+    )
 
     poi_regions: Tuple[RectangleRegion, ...] = discover_poi_regions(
         analysis_frames=preload_and_scale(
             video_source=_CombinedVideos(
-                frames=primary_source.frames,
-                total_frame_count=primary_source.total_frame_count,
-                original_resolution=primary_source.original_resolution,
-                original_fps=primary_source.original_fps,
+                frames=poi_discovery_source.frames,
+                total_frame_count=poi_discovery_source.total_frame_count,
+                original_resolution=poi_discovery_source.original_resolution,
+                original_fps=poi_discovery_source.original_fps,
             ),
             max_side_length=conversion_pois_functions.max_side_length,
             buffer_size=scaled_frames_buffer_size,
@@ -301,40 +307,33 @@ def create_timelapse_crop_score(  # pylint: disable=too-many-locals,too-many-pos
             else None
         ),
         batch_size=batch_size_pois,
-        source_frame_count=primary_source.total_frame_count,
+        source_frame_count=poi_discovery_source.total_frame_count,
         conversion_pois_functions=conversion_pois_functions,
-        original_resolution=primary_source.original_resolution,
+        original_resolution=poi_discovery_source.original_resolution,
         crop_resolution=crop_resolution,
         gpus=gpus,
         num_regions=num_regions,
     )
 
     cropped_to_best_region: ImageSourceType = video_common.crop_source(
-        source=load_input_videos(  # Don't scale or buffer output frames.
-            input_files=input_files, tqdm_desc="Reading Crop Output Frames"
-        ).frames,
+        source=scoring_source.frames,
         region=next(iter(poi_regions)),
     )
 
+    buffered_scoring_frames: ImageSourceType = preload_and_scale(
+        video_source=_CombinedVideos(
+            frames=cropped_to_best_region,
+            total_frame_count=poi_discovery_source.total_frame_count,
+            original_resolution=crop_resolution,
+            original_fps=poi_discovery_source.original_fps,
+        ),
+        max_side_length=conversion_scoring_functions.max_side_length,
+        buffer_size=scaled_frames_buffer_size,
+    ).frames
+
     scored_frames: ScoredFrames = vector_scoring.discover_high_scoring_frames(
-        scoring_frames=preload_and_scale(
-            video_source=_CombinedVideos(
-                frames=tqdm(
-                    cropped_to_best_region,
-                    total=primary_source.total_frame_count,
-                    unit="Frames",
-                    ncols=100,
-                    desc="Reading Cropped Frames for Scoring",
-                    maxinterval=1,
-                ),
-                total_frame_count=primary_source.total_frame_count,
-                original_resolution=crop_resolution,
-                original_fps=primary_source.original_fps,
-            ),
-            max_side_length=conversion_scoring_functions.max_side_length,
-            buffer_size=scaled_frames_buffer_size,
-        ).frames,
-        source_frame_count=primary_source.total_frame_count,
+        scoring_frames=buffered_scoring_frames,
+        source_frame_count=poi_discovery_source.total_frame_count,
         intermediate_info=(
             IntermediateFileInfo(
                 path=scores_vectors_path,
@@ -360,11 +359,7 @@ def create_timelapse_crop_score(  # pylint: disable=too-many-locals,too-many-pos
         :return: Iterator of output frames to be written to disk.
         """
 
-        for frame_index, input_frame in enumerate(
-            load_input_videos(
-                input_files=input_files,
-            ).frames
-        ):
+        for frame_index, input_frame in enumerate(output_source.frames):
             if frame_index in scored_frames.winning_indices:
 
                 yield image_common.reshape_from_regions(

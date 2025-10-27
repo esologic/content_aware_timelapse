@@ -2,9 +2,11 @@
 Tests of video interaction code.
 """
 
+import shutil
 import subprocess
 from itertools import tee
 from pathlib import Path
+from test.assets import LONG_TEST_VIDEO_PATH, SAMPLE_TIMELAPSE_INPUT_PATH
 from test.test_viderator import viderator_test_common
 
 import numpy as np
@@ -86,3 +88,34 @@ def test_write_source_to_disk_consume(
 
     for input_frame, output_frame in zip(test_frames, video_frames.frames):
         assert np.array_equal(input_frame, output_frame)
+
+
+@pytest.mark.parametrize("video_to_copy", [LONG_TEST_VIDEO_PATH, SAMPLE_TIMELAPSE_INPUT_PATH])
+def test_concat_videos_for_youtube(artifact_root: Path, video_to_copy: Path) -> None:
+    """
+    Test to make sure video concatenation works by checking the output frame count.
+    :param artifact_root: Test fixture.
+    :param video_to_copy: Video that will be concatenated with itself.
+    :return: None
+    """
+
+    input_frame_count: int = frames_in_video.frames_in_video_opencv(
+        video_path=video_to_copy,
+    ).total_frame_count
+
+    output_path = artifact_root / "youtube_concat.mp4"
+
+    with video_common.video_safe_temp_path() as tmp_vid_path:
+
+        shutil.copy(src=video_to_copy, dst=tmp_vid_path)
+
+        video_common.concat_videos_for_youtube(
+            video_paths=(video_to_copy, tmp_vid_path),
+            output_path=output_path,
+        )
+
+        output_frame_count = frames_in_video.frames_in_video_opencv(
+            video_path=output_path,
+        ).total_frame_count
+
+        assert output_frame_count == input_frame_count * 2

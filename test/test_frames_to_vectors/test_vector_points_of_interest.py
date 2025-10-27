@@ -149,7 +149,7 @@ def _run_top_regions_test(  # pylint: disable=too-many-positional-arguments,prot
     assert regions == expected_regions
 
 
-def test__top_regions_no_overlap() -> None:
+def test__top_regions_no_overlap(artifact_root: Path) -> None:
     """
     Creates a few clusters of points and then draws the best regions.
 
@@ -159,6 +159,8 @@ def test__top_regions_no_overlap() -> None:
     Because the points near the cluster would create a region that intersects with the region
     created by the top left cluster, a region containing a single point in the bottom right is
     created instead.
+    :param artifact_root: Test fixture that provides an optionally persisted directory to write
+    test assets to.
     :return: None
     """
     _run_top_regions_test(
@@ -169,5 +171,5 @@ def test__top_regions_no_overlap() -> None:
             RectangleRegion(top=0, left=0, bottom=100, right=100),
             RectangleRegion(top=200, left=200, bottom=300, right=300),
         ],
-        output_path=Path("./test_viz_no_overlap.png"),
+        output_path=artifact_root / "./test_viz_no_overlap.png",
     )
