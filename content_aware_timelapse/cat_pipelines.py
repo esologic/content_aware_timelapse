@@ -276,9 +276,11 @@ def create_timelapse_crop_score(  # pylint: disable=too-many-locals,too-many-pos
     poi_discovery_source: _CombinedVideos = load_input_videos(
         input_files=input_files, tqdm_desc="Reading Frames for POI Discovery"
     )
+
     scoring_source: _CombinedVideos = load_input_videos(
         input_files=input_files, tqdm_desc="Reading Frames to Crop and Score"
     )
+
     output_source: _CombinedVideos = load_input_videos(
         input_files=input_files, tqdm_desc="Reading Frames for Output."
     )

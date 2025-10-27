@@ -243,12 +243,7 @@ def discover_poi_regions(  # pylint: disable=too-many-arguments,too-many-positio
     alpha_points_frames: float = 0.8,
 ) -> Tuple[RectangleRegion, ...]:
     """
-    Crops an input video to a region of that video that is the most interesting using points of
-    interest analysis.
-
-    The input video is given at least twice in `analysis_frames`, `output_frames`, and
-    `drawing_frames`. The contents of these iterators should be pretty much the same, and they
-    should all have the same length.
+    Returns a tuple of the most interesting regions in a frame.
 
     :param analysis_frames: These frames are fed to the GPU via the conversion function and will
     likely be scaled down. Pre-scaled and buffered images should be passed here to avoid waiting
