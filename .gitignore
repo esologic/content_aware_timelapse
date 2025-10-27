@@ -111,6 +111,8 @@ ENV/
 /test/*/*.png
 /test/*/*.mp4
 
+/test/output_artifacts
+
 *.mkv
 
 prod_db_files
