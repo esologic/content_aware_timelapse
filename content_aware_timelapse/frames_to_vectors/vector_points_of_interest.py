@@ -279,14 +279,7 @@ def discover_poi_regions(  # pylint: disable=too-many-arguments,too-many-positio
                 original_source_resolution=original_resolution,
                 num_interesting_points=30,
             ),
-            tqdm(
-                enumerate(vectors_for_pois),
-                total=source_frame_count,
-                unit="Frames",
-                ncols=100,
-                desc="Discovering POIs",
-                maxinterval=1,
-            ),
+            enumerate(vectors_for_pois),
         )
     )
 

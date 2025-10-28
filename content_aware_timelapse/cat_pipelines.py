@@ -282,7 +282,7 @@ def create_timelapse_crop_score(  # pylint: disable=too-many-locals,too-many-pos
     )
 
     output_source: _CombinedVideos = load_input_videos(
-        input_files=input_files, tqdm_desc="Reading Frames for Output."
+        input_files=input_files, tqdm_desc="Reading Frames for Crop/Score Output"
     )
 
     crop_resolution = image_common.largest_fitting_region(
@@ -361,6 +361,7 @@ def create_timelapse_crop_score(  # pylint: disable=too-many-locals,too-many-pos
         :return: Iterator of output frames to be written to disk.
         """
 
+        # TODO: We don't need to re-read the entire video here, only up until the max winning frame.
         for frame_index, input_frame in enumerate(output_source.frames):
             if frame_index in scored_frames.winning_indices:
 

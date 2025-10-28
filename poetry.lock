@@ -831,6 +831,27 @@ files = [
 tests = ["pytest"]
 
 [[package]]
+name = "html2image"
+version = "2.0.7"
+description = "Package acting as a wrapper around the headless mode of existing web browsers to generate images from URLs and from HTML+CSS strings or files."
+optional = false
+python-versions = ">=3.6"
+groups = ["main"]
+files = [
+    {file = "html2image-2.0.7-py3-none-any.whl", hash = "sha256:1806df797e8320ba3246f45149e7034314911be6a285787cbff3edf5bbe9de40"},
+    {file = "html2image-2.0.7.tar.gz", hash = "sha256:8644fd424cff2805977f4583f965b0235733f9eb08569e4c02f6befe6e7fafcc"},
+]
+
+[package.dependencies]
+requests = "*"
+websocket-client = ">=1.0,<2.0"
+
+[package.extras]
+dev = ["build", "flake8", "pillow (>=8.2.0)", "pytest", "twine"]
+lint = ["flake8"]
+test = ["pillow (>=8.2.0)", "pytest"]
+
+[[package]]
 name = "huggingface-hub"
 version = "0.34.4"
 description = "Client library to download and publish models, datasets and other repos on the huggingface.co hub"
@@ -2920,6 +2941,23 @@ files = [
 ]
 
 [[package]]
+name = "websocket-client"
+version = "1.9.0"
+description = "WebSocket client for Python with low level API options"
+optional = false
+python-versions = ">=3.9"
+groups = ["main"]
+files = [
+    {file = "websocket_client-1.9.0-py3-none-any.whl", hash = "sha256:af248a825037ef591efbf6ed20cc5faa03d3b47b9e5a2230a529eeee1c1fc3ef"},
+    {file = "websocket_client-1.9.0.tar.gz", hash = "sha256:9e813624b6eb619999a97dc7958469217c3176312b3a16a4bd1bc7e08a46ec98"},
+]
+
+[package.extras]
+docs = ["Sphinx (>=6.0)", "myst-parser (>=2.0.0)", "sphinx_rtd_theme (>=1.1.0)"]
+optional = ["python-socks", "wsaccel"]
+test = ["pytest", "websockets"]
+
+[[package]]
 name = "wheel"
 version = "0.38.4"
 description = "A built-package format for Python"
@@ -2937,4 +2975,4 @@ test = ["pytest (>=3.0.0)"]
 [metadata]
 lock-version = "2.1"
 python-versions = "^3.10"
-content-hash = "983db8aa9f5de1194ded2c0b6e75c03cb033dfcff56f2baa6cf5e45db9c3ce16"
+content-hash = "eb390810617fc17bcb45885ae778b3a30afc37b15ce25ed7724259e3db65ec53"
