@@ -19,7 +19,7 @@ def pytest_addoption(parser: Parser) -> None:
     parser.addoption(
         "--write-assets",
         action="store_true",
-        default=True,
+        default=False,
         help="Write local debug/test assets (images, logs, etc.)",
     )
 
