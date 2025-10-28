@@ -8,7 +8,6 @@ from typing import Iterator, List, NamedTuple, Optional, Tuple, Union
 import numpy as np
 import pandas as pd
 from numpy import typing as npt
-from tqdm import tqdm
 
 from content_aware_timelapse.frames_to_vectors import conversion
 from content_aware_timelapse.frames_to_vectors.conversion import IntermediateFileInfo

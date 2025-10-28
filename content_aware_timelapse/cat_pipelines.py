@@ -64,13 +64,17 @@ def calculate_output_frames(duration: float, output_fps: float) -> int:
     return int(duration * output_fps)
 
 
-def load_input_videos(input_files: List[Path], tqdm_desc: Optional[str] = None) -> _CombinedVideos:
+def load_input_videos(
+    input_files: List[Path], tqdm_desc: Optional[str] = None, tqdm_total: Optional[int] = None
+) -> _CombinedVideos:
     """
     Helper function to combine the input videos.
 
     :param input_files: List of input videos.
     :param tqdm_desc: If provided, wrap the combined frame iterator in a tqdm progress bar
     with this description. If None, tqdm is disabled.
+    :param tqdm_total: If provided, overrides the TQDM total field. By default, this is the total
+    number of frames in the input video.
     :return: NT containing the total frame count and a joined iterator of all the input
     frames.
     """
@@ -98,7 +102,7 @@ def load_input_videos(input_files: List[Path], tqdm_desc: Optional[str] = None) 
     if tqdm_desc is not None:
         frames_iter = tqdm(
             all_input_frames,
-            total=total_frame_count,
+            total=tqdm_total if tqdm_total is not None else total_frame_count,
             unit="Frames",
             ncols=100,
             desc=tqdm_desc,
@@ -281,10 +285,6 @@ def create_timelapse_crop_score(  # pylint: disable=too-many-locals,too-many-pos
         input_files=input_files, tqdm_desc="Reading Frames to Crop and Score"
     )
 
-    output_source: _CombinedVideos = load_input_videos(
-        input_files=input_files, tqdm_desc="Reading Frames for Crop/Score Output"
-    )
-
     crop_resolution = image_common.largest_fitting_region(
         source_resolution=poi_discovery_source.original_resolution, aspect_ratio=aspect_ratio
     )
@@ -355,16 +355,26 @@ def create_timelapse_crop_score(  # pylint: disable=too-many-locals,too-many-pos
         gpus=gpus,
     )
 
+    final_frame_index = max(scored_frames.winning_indices)
+
+    output_source: ImageSourceType = itertools.islice(
+        load_input_videos(
+            input_files=input_files,
+            tqdm_desc="Reading Frames for Crop/Score Output",
+            tqdm_total=final_frame_index,
+        ).frames,
+        None,
+        final_frame_index + 1,
+    )
+
     def output_frames() -> ImageSourceType:
         """
         Creates the output frames.
         :return: Iterator of output frames to be written to disk.
         """
 
-        # TODO: We don't need to re-read the entire video here, only up until the max winning frame.
-        for frame_index, input_frame in enumerate(output_source.frames):
+        for frame_index, input_frame in enumerate(output_source):
             if frame_index in scored_frames.winning_indices:
-
                 yield image_common.reshape_from_regions(
                     image=input_frame,
                     prioritized_poi_regions=poi_regions,

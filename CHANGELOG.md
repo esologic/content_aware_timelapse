@@ -1,5 +1,14 @@
 # Changelog
 
+0.12.0 - (2025-10-28)
+------------------
+
+* Introduces a new concept to the `viderator` internal package, `html_on_image` used to draw text
+and other graphics onto images using HTML/CSS. 
+* Adds an initial simple thumbnail implementation and unit test.
+* Fixes bug in crop score where entire input had to be re-read when selecting output frames.
+
+
 0.11.0 - (2025-10-24)
 ------------------
 

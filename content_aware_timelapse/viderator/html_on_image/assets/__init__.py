@@ -1,4 +1,4 @@
-""" """
+"""Makes looking up asset locations easier in other code"""
 
 from pathlib import Path
 
