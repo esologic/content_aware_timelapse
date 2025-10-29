@@ -131,7 +131,7 @@ def _create_video_writer_resolution(
             "-vcodec",
             "rawvideo",
             "-pix_fmt",
-            "bgr24",
+            "rgb24",  # prefer rgb24
             "-s",
             f"{resolution.width}x{resolution.height}",
             "-r",
@@ -139,27 +139,15 @@ def _create_video_writer_resolution(
             "-i",
             "-",
             "-vf",
-            f"yadif,scale={resolution.width}:{resolution.height}",
-            "-vcodec",
+            "format=rgb24",  # force RGB round-trip
+            "-c:v",
             "libx264",
-            "-profile:v",
-            "high",
             "-pix_fmt",
-            "yuv420p",
-            "-color_range",
-            "2",
+            "rgb24",  # keep RGB for exact values
             "-crf",
-            "14",
+            "0",  # lossless
             "-preset",
-            "veryslow",
-            "-tune",
-            "film",
-            "-bf",
-            "2",
-            "-g",
-            "250",
-            "-movflags",
-            "+faststart",
+            "ultrafast",
             str(video_path),
         ]
 

@@ -332,5 +332,5 @@ def reduce_frames_by_score(  # pylint: disable=too-many-arguments, too-many-posi
         video_path=output_path,
         video_fps=output_fps,
         audio_paths=audio_paths,
-        high_quality=False,
+        high_quality=True,
     )

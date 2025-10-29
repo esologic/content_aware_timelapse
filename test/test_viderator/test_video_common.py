@@ -62,6 +62,8 @@ def test_write_source_to_disk_consume(
 
     output_path = Path(tmpdir) / "output.mp4"
 
+    assert not output_path.exists()
+
     input_frames, test_frames = tee(
         viderator_test_common.create_black_frames_iterator(
             image_resolution=input_image_resolution, count=count
@@ -86,8 +88,14 @@ def test_write_source_to_disk_consume(
     assert video_frames.total_frame_count == count
     assert video_frames.original_resolution == input_image_resolution
 
-    for input_frame, output_frame in zip(test_frames, video_frames.frames):
-        assert np.array_equal(input_frame, output_frame)
+    for frame_index, (input_frame, output_frame) in enumerate(
+        zip(test_frames, video_frames.frames)
+    ):
+        assert np.array_equal(input_frame, output_frame), (
+            f"Frame #{frame_index} not equal! Input Sum: {input_frame.sum()} "
+            f"shape: {input_frame.shape}, Output Sum: {output_frame.sum()}, "
+            f"shape: {output_frame.shape},"
+        )
 
 
 @pytest.mark.parametrize("video_to_copy", [LONG_TEST_VIDEO_PATH, SAMPLE_TIMELAPSE_INPUT_PATH])

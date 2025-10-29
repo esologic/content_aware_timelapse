@@ -1,6 +1,13 @@
 """
 Combines the HTML templating process with image manipulation, enabling drawing webpages on top of
 images.
+
+Note: Needs google chrome!!
+
+wget https://dl.google.com/linux/direct/google-chrome-stable_current_amd64.deb
+sudo apt install ./google-chrome-stable_current_amd64.deb
+
+Eventually we should use a docker image or something to do this.
 """
 
 import tempfile
@@ -31,6 +38,8 @@ def template_over_image(
 
     with tempfile.TemporaryDirectory() as temp_dir:
 
+        Path(temp_dir).mkdir(parents=True, exist_ok=True)
+
         renderer = Html2Image(
             size=(input_resolution.width, input_resolution.height),
             custom_flags=[
@@ -39,6 +48,7 @@ def template_over_image(
                 "--default-background-color=00000000",
             ],
             output_path=temp_dir,
+            browser_executable="/usr/bin/google-chrome",
         )
 
         renderer.screenshot(html_str=filled_template, save_as="overlay.png")

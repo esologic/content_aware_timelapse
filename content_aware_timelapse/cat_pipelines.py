@@ -386,5 +386,5 @@ def create_timelapse_crop_score(  # pylint: disable=too-many-locals,too-many-pos
         video_path=output_path,
         video_fps=output_fps,
         audio_paths=audio_paths,
-        high_quality=False,
+        high_quality=True,
     )

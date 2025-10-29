@@ -39,7 +39,7 @@ def artifact_root(request: FixtureRequest, tmp_path_factory: TempPathFactory) ->
         # Persistent directory under ./test_artifacts
         root_dir = _TEST_DIRECTORY / Path("output_artifacts")
 
-        assert root_dir.exists()
+        root_dir.mkdir(parents=True, exist_ok=True)
 
         test_dir: Path = root_dir / request.node.name
         test_dir.mkdir(parents=True, exist_ok=True)
