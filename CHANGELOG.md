@@ -1,5 +1,12 @@
 # Changelog
 
+0.12.2 - (2025-10-30)
+------------------
+
+* Fixes bug where if a single video was passed into the video concat function it would result in an 
+invalid video.
+
+
 0.12.1 - (2025-10-30)
 ------------------
 

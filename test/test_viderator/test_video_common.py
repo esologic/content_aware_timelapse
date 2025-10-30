@@ -8,6 +8,7 @@ from itertools import tee
 from pathlib import Path
 from test.assets import LONG_TEST_VIDEO_PATH, SAMPLE_TIMELAPSE_INPUT_PATH
 from test.test_viderator import viderator_test_common
+from typing import List
 
 import numpy as np
 import pytest
@@ -98,27 +99,50 @@ def test_write_source_to_disk_consume(
         )
 
 
-@pytest.mark.parametrize("video_to_copy", [LONG_TEST_VIDEO_PATH, SAMPLE_TIMELAPSE_INPUT_PATH])
-def test_concat_videos_for_youtube(artifact_root: Path, video_to_copy: Path) -> None:
+@pytest.mark.parametrize(
+    "video_to_copy",
+    [
+        LONG_TEST_VIDEO_PATH,
+        SAMPLE_TIMELAPSE_INPUT_PATH,
+    ],
+)
+@pytest.mark.parametrize("num_copies", [1, 2, 3, 4])
+def test_concat_videos_for_youtube(
+    tmpdir: str,
+    artifact_root: Path,
+    video_to_copy: Path,
+    num_copies: int,
+) -> None:
     """
     Test to make sure video concatenation works by checking the output frame count.
+    :param tmpdir: Test fixture.
     :param artifact_root: Test fixture.
     :param video_to_copy: Video that will be concatenated with itself.
+    :param num_copies: Number of times to concatenate the video with itself.
     :return: None
     """
 
-    input_frame_count: int = frames_in_video.frames_in_video_opencv(
+    # --- Measure baseline ---
+    input_frame_count = frames_in_video.frames_in_video_opencv(
         video_path=video_to_copy,
     ).total_frame_count
 
-    output_path = artifact_root / "youtube_concat.mp4"
+    output_path = artifact_root / f"youtube_concat_{num_copies}.mp4"
 
-    with video_common.video_safe_temp_path() as tmp_vid_path:
+    # --- Build list of input copies ---
+    tmp_dir = Path(tmpdir) / "concat_test_"
+    tmp_dir.mkdir(parents=True, exist_ok=True)
 
-        shutil.copy(src=video_to_copy, dst=tmp_vid_path)
+    video_paths: List[Path] = []
+
+    try:
+        for i in range(num_copies):
+            tmp_path = tmp_dir / f"copy_{i}.mp4"
+            shutil.copy(video_to_copy, tmp_path)
+            video_paths.append(tmp_path)
 
         video_common.concat_videos_for_youtube(
-            video_paths=(video_to_copy, tmp_vid_path),
+            video_paths=tuple(video_paths),
             output_path=output_path,
         )
 
@@ -126,4 +150,20 @@ def test_concat_videos_for_youtube(artifact_root: Path, video_to_copy: Path) -> 
             video_path=output_path,
         ).total_frame_count
 
-        assert output_frame_count == input_frame_count * 2
+        expected_frames = input_frame_count * num_copies
+
+        assert output_frame_count == expected_frames
+
+    finally:
+        # Clean up temp files
+        for p in video_paths:
+            try:
+                p.unlink()
+            except FileNotFoundError:
+                pass
+
+        # Remove temp directory
+        try:
+            tmp_dir.rmdir()
+        except OSError:
+            pass
