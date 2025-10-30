@@ -1,5 +1,11 @@
 # Changelog
 
+0.12.1 - (2025-10-30)
+------------------
+
+* A few fixes following running the UT suite on another GPU server.
+
+
 0.12.0 - (2025-10-28)
 ------------------
 

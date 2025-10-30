@@ -79,6 +79,9 @@ def test_create_timelapse_score(
 
     assert video_frames.total_frame_count == duration * output_fps
 
+    output_path.unlink(missing_ok=True)
+    vectors_path.unlink(missing_ok=True)
+
 
 @pytest.mark.parametrize("best_frame_enabled", [True, False])
 @pytest.mark.parametrize(
@@ -142,6 +145,8 @@ def test_create_timelapse_score_output(
         assert best_frame_path.exists()
         assert load_rgb_image(path=best_frame_path) is not None
 
+    output_path.unlink(missing_ok=True)
+
 
 def test_create_timelapse_crop_score(
     tmpdir: str,
@@ -189,3 +194,7 @@ def test_create_timelapse_crop_score(
     assert scores_vectors_path.exists()
 
     assert video_frames.total_frame_count == duration * output_fps
+
+    output_path.unlink(missing_ok=True)
+    pois_vectors_path.unlink(missing_ok=True)
+    scores_vectors_path.unlink(missing_ok=True)
