@@ -6,14 +6,14 @@ import shutil
 import subprocess
 from itertools import tee
 from pathlib import Path
-from test.assets import LONG_TEST_VIDEO_PATH, SAMPLE_TIMELAPSE_INPUT_PATH
+from test.assets import EASTERN_BOX_TURTLE_PATH, LONG_TEST_VIDEO_PATH, SAMPLE_TIMELAPSE_INPUT_PATH
 from test.test_viderator import viderator_test_common
 from typing import List
 
 import numpy as np
 import pytest
 
-from content_aware_timelapse.viderator import frames_in_video, video_common
+from content_aware_timelapse.viderator import frames_in_video, image_common, video_common
 from content_aware_timelapse.viderator.viderator_types import ImageResolution
 
 VISUALIZATION_ENABLED = False
@@ -122,14 +122,12 @@ def test_concat_videos_for_youtube(
     :return: None
     """
 
-    # --- Measure baseline ---
     input_frame_count = frames_in_video.frames_in_video_opencv(
         video_path=video_to_copy,
     ).total_frame_count
 
     output_path = artifact_root / f"youtube_concat_{num_copies}.mp4"
 
-    # --- Build list of input copies ---
     tmp_dir = Path(tmpdir) / "concat_test_"
     tmp_dir.mkdir(parents=True, exist_ok=True)
 
@@ -167,3 +165,40 @@ def test_concat_videos_for_youtube(
             tmp_dir.rmdir()
         except OSError:
             pass
+
+
+@pytest.mark.parametrize("high_quality", [True, False])
+def test_write_source_to_disk_consume_turtle(artifact_root: Path, high_quality: bool) -> None:
+    """
+    Eyeball test using the turtle asset, where it should be obvious if the color space has been
+    swapped or anything else terrible has happened.
+    :param high_quality: Passed to write function.
+    :return: None
+    """
+
+    output_path = Path(artifact_root) / "turtle_sense_check.mp4"
+    output_path.unlink(missing_ok=True)
+
+    num_frames = 30
+    video_fps = 30
+
+    video_common.write_source_to_disk_consume(
+        source=(
+            image_common.load_rgb_image(path=EASTERN_BOX_TURTLE_PATH) for _ in range(num_frames)
+        ),
+        video_path=output_path,
+        video_fps=video_fps,
+        high_quality=high_quality,
+    )
+
+    assert is_video_valid(output_path)
+
+    video_frames = frames_in_video.frames_in_video_opencv(
+        video_path=output_path,
+    )
+
+    assert video_frames.original_fps == video_fps
+    assert video_frames.total_frame_count == num_frames
+    assert video_frames.original_resolution == image_common.image_resolution(
+        image_common.load_rgb_image(path=EASTERN_BOX_TURTLE_PATH)
+    )

@@ -128,26 +128,24 @@ def _create_video_writer_resolution(
             "-y",
             "-f",
             "rawvideo",
-            "-vcodec",
-            "rawvideo",
             "-pix_fmt",
-            "rgb24",  # prefer rgb24
+            "rgb24",
             "-s",
             f"{resolution.width}x{resolution.height}",
             "-r",
             str(video_fps),
             "-i",
             "-",
-            "-vf",
-            "format=rgb24",  # force RGB round-trip
             "-c:v",
             "libx264",
-            "-pix_fmt",
-            "rgb24",  # keep RGB for exact values
             "-crf",
-            "0",  # lossless
+            "0",
             "-preset",
-            "ultrafast",
+            "veryslow",
+            "-pix_fmt",
+            "yuv444p",
+            "-vf",
+            "format=yuv444p",
             str(video_path),
         ]
 
@@ -171,9 +169,11 @@ def _create_video_writer_resolution(
             if image.dtype != np.uint8:
                 raise ValueError("Input image must be uint8.")
 
+            color_space_swapped = cv2.cvtColor(image, cv2.COLOR_RGB2BGR)
+
             # Wait until the pipe is ready for writing
             select.select([], [stdin_fd], [])
-            ffmpeg_proc.stdin.write(image.tobytes())
+            ffmpeg_proc.stdin.write(color_space_swapped.tobytes())
 
         def release() -> None:
             """
