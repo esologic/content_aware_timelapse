@@ -2,13 +2,15 @@
 CLI-specific functionality.
 """
 
+import random
 from enum import Enum
 from pathlib import Path
-from typing import Callable, Dict, Optional, TypeVar
+from typing import Callable, Dict, Optional, Tuple, TypeVar
 
 import click
 from click import Context, Parameter
 from click.decorators import FC
+from click_option_group import MutuallyExclusiveOptionGroup, optgroup
 
 from content_aware_timelapse.frames_to_vectors.conversion_types import (
     ConversionPOIsFunctions,
@@ -28,13 +30,127 @@ from content_aware_timelapse.gpu_discovery import discover_gpus
 E = TypeVar("E", bound=Enum)
 T = TypeVar("T")
 
+ENV_VAR_PREFIX = "CAT"
 
-def create_enum_option(
+
+def make_audio_option_group(name_prefix: str = "") -> Callable[[FC], FC]:
+    """
+    Defines the different methods to get set the audio that will be put under the resulting video.
+    :param name_prefix: Prepended to the name the user will pass in for these options. Format is:
+    `--{name_prefix}audio` / "--{name_prefix}audio-directory-random"
+    :return: Function to become a click decorator that will produce the set of options.
+    """
+
+    def random_sort_audio_in_directory_callback(
+        ctx: Context, _param: Parameter, value: Path
+    ) -> None:
+        """
+        If the user provides a directory, collect all audio files within it,
+        shuffle them randomly, and add the result to the "audio" option in the context.
+
+        :param ctx: Click context
+        :param _param: Click parameter (unused)
+        :param value: Directory path provided via --random-audio-directory
+        :return: None
+        """
+
+        if value is None:
+            return None
+
+        ctx.ensure_object(dict)
+
+        # Gather supported audio files in the directory
+        supported_exts = {".mp3", ".wav", ".flac", ".aiff", ".aac", ".ogg", ".m4a"}
+        audio_files = [p for p in value.iterdir() if p.suffix.lower() in supported_exts]
+
+        if not audio_files:
+            raise click.BadParameter(f"No supported audio files found in directory: {value}")
+
+        random.shuffle(audio_files)
+
+        tuple_converted = tuple(audio_files)
+
+        if ctx.params.get("audio", None) is None:
+            ctx.params["audio"] = tuple_converted
+        else:
+            ctx.params["audio"] = ctx.params["audio"] + tuple_converted
+
+        return None
+
+    def add_paths_to_context(ctx: Context, _param: Parameter, value: Tuple[Path, ...]) -> None:
+        """
+        If the user provides a directory, collect all audio files within it,
+        shuffle them randomly, and add the result to the "audio" option in the context.
+
+        :param ctx: Click context
+        :param _param: Click parameter (unused)
+        :param value: Directory path provided via --random-audio-directory
+        :return: None
+        """
+
+        ctx.ensure_object(dict)
+
+        if ctx.params.get("audio", None) is None:
+            ctx.params["audio"] = value
+        else:
+            ctx.params["audio"] = ctx.params["audio"] + value
+
+    def decorator(command: FC) -> FC:
+        """
+        :param command: To wrap.
+        :return: Decorated function.
+        """
+
+        group = optgroup.group(
+            "Configures the audio that will be put under the resulting video",
+            cls=MutuallyExclusiveOptionGroup,
+        )
+
+        for option in [
+            optgroup.option(
+                f"--{name_prefix}audio-directory-random",
+                type=click.Path(
+                    file_okay=False, exists=True, dir_okay=True, readable=True, path_type=Path
+                ),
+                help=(
+                    "The audio files in this directory will be sorted in a "
+                    "random order and added to resulting video."
+                ),
+                callback=random_sort_audio_in_directory_callback,
+                envvar=f"{ENV_VAR_PREFIX}_AUDIO_DIRECTORY_RANDOM",
+                expose_value=False,
+                show_envvar=True,
+            ),
+            optgroup.option(
+                f"--{name_prefix}audio",
+                "-a",
+                type=click.Path(
+                    file_okay=True, exists=True, dir_okay=False, writable=True, path_type=Path
+                ),
+                help="If given, these audio(s) will be added to the resulting video.",
+                multiple=True,
+                envvar=f"{ENV_VAR_PREFIX}_AUDIO",
+                callback=add_paths_to_context,
+                expose_value=False,
+                show_envvar=True,
+            ),
+        ]:
+            option(command)
+
+        group(command)
+
+        return command
+
+    return decorator
+
+
+def create_enum_option(  # pylint: disable=too-many-positional-arguments
     arg_flag: str,
     help_message: str,
     default: E,
     input_enum: type[E],
     lookup_fn: Optional[Callable[[E], T]] = None,
+    envvar: Optional[str] = None,
 ) -> Callable[[FC], FC]:
     """
     Creates a Click option for an Enum type. Resulting input can be given as an index or as the
@@ -47,6 +163,7 @@ def create_enum_option(
     :param lookup_fn: If given, the resolved value will be passed to this function, then the click
     command will get whatever is returned as an argument.
     :param input_enum: The Enum class from which the option values are derived.
+    :param envvar: Passed to the click option.
     :return: A Click option configured for the specified Enum.
     """
 
@@ -93,6 +210,8 @@ def create_enum_option(
         help=help_string,
         default=default.value,  # Ensure we use the string value for the default
         show_default=True,
+        envvar=envvar,
+        show_envvar=True,
     )
 
 
@@ -175,6 +294,8 @@ frame_buffer_size_arg = click.option(
     required=False,
     default=0,
     show_default=True,
+    envvar=f"{ENV_VAR_PREFIX}_FRAME_BUFFER_SIZE",
+    show_envvar=True,
 )
 
 viz_path_arg = click.option(
@@ -196,15 +317,8 @@ deselect_arg = click.option(
     required=False,
     default=1000,
     show_default=True,
-)
-
-audio_paths_arg = click.option(
-    "--audio",
-    "-a",
-    type=click.Path(file_okay=True, exists=True, dir_okay=False, writable=True, path_type=Path),
-    help="If given, these audio(s) will be added to the resulting video.",
-    required=False,
-    multiple=True,
+    envvar=f"{ENV_VAR_PREFIX}_DESELECT",
+    show_envvar=True,
 )
 
 gpus_arg = click.option(
@@ -222,6 +336,7 @@ backend_pois_arg = create_enum_option(
     default=VectorBackendPOIs.vit_attention,
     input_enum=VectorBackendPOIs,
     lookup_fn=_CONVERSION_POIS_FUNCTIONS_LOOKUP.get,
+    envvar=f"{ENV_VAR_PREFIX}_BACKEND_POIS",
 )
 
 backend_scores_arg = create_enum_option(
@@ -230,6 +345,7 @@ backend_scores_arg = create_enum_option(
     default=VectorBackendScores.vit_cls,
     input_enum=VectorBackendScores,
     lookup_fn=_CONVERSION_SCORING_FUNCTIONS_LOOKUP.get,
+    envvar=f"{ENV_VAR_PREFIX}_BACKEND_SCORES",
 )
 
 batch_size_pois_arg = click.option(
@@ -243,6 +359,8 @@ batch_size_pois_arg = click.option(
     required=True,
     default=600,
     show_default=True,
+    envvar=f"{ENV_VAR_PREFIX}_BATCH_POIS",
+    show_envvar=True,
 )
 
 batch_size_scores_arg = click.option(
@@ -253,6 +371,8 @@ batch_size_scores_arg = click.option(
     required=True,
     default=600,
     show_default=True,
+    envvar=f"{ENV_VAR_PREFIX}_BATCH_SCORES",
+    show_envvar=True,
 )
 
 vectors_path_pois_arg = click.option(

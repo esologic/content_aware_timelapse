@@ -57,7 +57,7 @@ def cli() -> None:
 @catcli_ui.frame_buffer_size_arg
 @catcli_ui.backend_scores_arg
 @catcli_ui.deselect_arg
-@catcli_ui.audio_paths_arg
+@catcli_ui.make_audio_option_group()
 @catcli_ui.vectors_path_scores_arg
 @catcli_ui.viz_path_arg
 @catcli_ui.gpus_arg
@@ -140,7 +140,7 @@ def content(  # pylint: disable=too-many-locals,too-many-positional-arguments,to
 @catcli_ui.backend_scores_arg
 @catcli_ui.backend_pois_arg
 @catcli_ui.deselect_arg
-@catcli_ui.audio_paths_arg
+@catcli_ui.make_audio_option_group()
 @catcli_ui.vectors_path_pois_arg
 @catcli_ui.vectors_path_scores_arg
 @catcli_ui.viz_path_arg
@@ -241,7 +241,7 @@ def content_cropped(  # pylint: disable=too-many-locals,too-many-positional-argu
 @catcli_ui.output_path_arg
 @catcli_ui.duration_arg
 @catcli_ui.output_fps_arg
-@catcli_ui.audio_paths_arg
+@catcli_ui.make_audio_option_group()
 def classic(  # pylint: disable=too-many-locals
     input_files: List[Path],
     output_path: Path,

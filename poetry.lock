@@ -191,6 +191,27 @@ files = [
 colorama = {version = "*", markers = "platform_system == \"Windows\""}
 
 [[package]]
+name = "click-option-group"
+version = "0.5.9"
+description = "Option groups missing in Click"
+optional = false
+python-versions = ">=3.7"
+groups = ["main"]
+files = [
+    {file = "click_option_group-0.5.9-py3-none-any.whl", hash = "sha256:ad2599248bd373e2e19bec5407967c3eec1d0d4fc4a5e77b08a0481e75991080"},
+    {file = "click_option_group-0.5.9.tar.gz", hash = "sha256:f94ed2bc4cf69052e0f29592bd1e771a1789bd7bfc482dd0bc482134aff95823"},
+]
+
+[package.dependencies]
+click = ">=7.0"
+
+[package.extras]
+dev = ["pre-commit", "pytest"]
+docs = ["m2r2", "pallets-sphinx-themes", "sphinx"]
+test = ["pytest"]
+test-cov = ["pytest", "pytest-cov"]
+
+[[package]]
 name = "clip"
 version = "1.0"
 description = ""
@@ -2975,4 +2996,4 @@ test = ["pytest (>=3.0.0)"]
 [metadata]
 lock-version = "2.1"
 python-versions = "^3.10"
-content-hash = "eb390810617fc17bcb45885ae778b3a30afc37b15ce25ed7724259e3db65ec53"
+content-hash = "68c52a4d113a51e294204d21083ada3c6fc1e0a4642f90e307223ebeda02f5fa"

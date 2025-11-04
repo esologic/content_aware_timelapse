@@ -118,7 +118,8 @@ def _create_video_writer_resolution(
     :param video_fps: FPS of the video.
     :param resolution: Size of the resulting video.
     :param high_quality: If true, `ffmpeg` will be invoked directly this will create a much larger,
-    much higher quality output.
+    much higher quality output. TODO: Need to have different writers for the different types of
+    outputs.
     :return: The writer.
     """
 
@@ -139,13 +140,15 @@ def _create_video_writer_resolution(
             "-c:v",
             "libx264",
             "-crf",
-            "0",
+            "10",  # Visually lossless but not gigantic
             "-preset",
             "veryslow",
             "-pix_fmt",
-            "yuv444p",
+            "yuv420p",
             "-vf",
-            "format=yuv444p",
+            "format=yuv420p",
+            "-movflags",
+            "+faststart",  # puts metadata up front
             str(video_path),
         ]
 

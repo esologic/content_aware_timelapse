@@ -1,5 +1,14 @@
 # Changelog
 
+0.13.0 - (2025-11-03)
+------------------
+
+* Fixed high quality output mode to be more amenable to uploads to YouTube and other shorts sites.
+* Added `--audio-directory-random` flag to the CLIs to be able to set a directory of files as a
+source for audio for the videos. A random audio file will be picked from the directory.
+* Added some more environment variable passing.
+
+
 0.12.3 - (2025-10-30)
 ------------------
 
