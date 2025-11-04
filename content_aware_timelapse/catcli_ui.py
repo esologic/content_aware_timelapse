@@ -123,7 +123,6 @@ def make_audio_option_group(name_prefix: str = "") -> Callable[[FC], FC]:
             ),
             optgroup.option(
                 f"--{name_prefix}audio",
-                "-a",
                 type=click.Path(
                     file_okay=True, exists=True, dir_okay=False, writable=True, path_type=Path
                 ),
