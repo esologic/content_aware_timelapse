@@ -76,6 +76,30 @@ def test_largest_fitting_region(
     assert image_common.largest_fitting_region(source, ratio) == expected
 
 
+@pytest.mark.parametrize(
+    "source, ratio, expected",
+    [
+        # Cropped height (16:9 inside 1200x1600)
+        (
+            ImageResolution(1200, 1600),
+            AspectRatio(16, 9),
+            ImageResolution(1200, 674),
+        ),
+    ],
+)
+def test_largest_fitting_region_even(
+    source: ImageResolution, ratio: AspectRatio, expected: ImageResolution
+) -> None:
+    """
+    Smoke test of the function in even dimensions mode.
+    :param source: Input.
+    :param ratio: Input.
+    :param expected: Expected output.
+    :return: None
+    """
+    assert image_common.largest_fitting_region(source, ratio, even_dimensions=True) == expected
+
+
 def test_reshape_from_regions_linear_layout() -> None:
     """
     Verify that a 2×2 input reshapes correctly into a 1×4 output layout.

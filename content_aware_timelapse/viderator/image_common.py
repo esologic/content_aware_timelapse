@@ -48,12 +48,16 @@ def region_to_resolution(region: RectangleRegion) -> ImageResolution:
 
 
 def largest_fitting_region(
-    source_resolution: ImageResolution, aspect_ratio: AspectRatio
+    source_resolution: ImageResolution,
+    aspect_ratio: AspectRatio,
+    even_dimensions: bool = False,
 ) -> ImageResolution:
     """
     Determine the largest region of `source` that fits the input aspect ratio.
     :param source_resolution: Bounds.
     :param aspect_ratio: Desired aspect ratio.
+    :param even_dimensions: If True, the output resolution will be rounded down such that the
+    dimensions are both even numbers. Useful for encoding.
     :return: Largest resolution.
     """
 
@@ -62,13 +66,19 @@ def largest_fitting_region(
     height_if_full_width = aspect_ratio.height * scale_w
 
     if height_if_full_width <= source_resolution.height:
-        return ImageResolution(source_resolution.width, int(height_if_full_width))
+        width = source_resolution.width
+        height = int(height_if_full_width)
+    else:
+        # Otherwise height-limited fit
+        scale_h = source_resolution.height / aspect_ratio.height
+        width = int(aspect_ratio.width * scale_h)
+        height = source_resolution.height
 
-    # Otherwise height-limited fit
-    scale_h = source_resolution.height / aspect_ratio.height
-    width_if_full_height = aspect_ratio.width * scale_h
+    if even_dimensions:
+        width -= width % 2
+        height -= height % 2
 
-    return ImageResolution(int(width_if_full_height), source_resolution.height)
+    return ImageResolution(width, height)
 
 
 def load_rgb_image(path: Path) -> RGBInt8ImageType:

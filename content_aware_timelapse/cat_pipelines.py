@@ -286,7 +286,9 @@ def create_timelapse_crop_score(  # pylint: disable=too-many-locals,too-many-pos
     )
 
     crop_resolution = image_common.largest_fitting_region(
-        source_resolution=poi_discovery_source.original_resolution, aspect_ratio=aspect_ratio
+        source_resolution=poi_discovery_source.original_resolution,
+        aspect_ratio=aspect_ratio,
+        even_dimensions=True,
     )
 
     poi_regions: Tuple[RectangleRegion, ...] = discover_poi_regions(

@@ -124,6 +124,13 @@ def _create_video_writer_resolution(
     """
 
     if high_quality:
+
+        if resolution.height % 2 != 0 or resolution.width % 2 != 0:
+            raise ValueError(
+                "Need even video resolution for 420 chroma subsampling. "
+                f"Input resolution: {resolution}"
+            )
+
         ffmpeg_cmd = [
             "ffmpeg",
             "-y",
