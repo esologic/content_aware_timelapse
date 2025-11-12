@@ -564,7 +564,7 @@ def concat_videos_for_youtube(video_paths: Tuple[Path, ...], output_path: Path) 
             f"Widths: {widths}, Heights: {heights}, FPS: {fps_set}"
         )
 
-    # --- Case 1: Single file (re-encode only) ---
+    # Single file (re-encode only)
     if len(resolved_paths) == 1:
         (
             ffmpeg.input(str(resolved_paths[0]))
@@ -582,7 +582,7 @@ def concat_videos_for_youtube(video_paths: Tuple[Path, ...], output_path: Path) 
         )
         return
 
-    # --- Case 2: Multiple files (concat demuxer) ---
+    # Multiple files (concat demuxer)
     with tempfile.NamedTemporaryFile("w", delete=True, suffix=".txt") as list_file:
         for f in resolved_paths:
             list_file.write(f"file '{f}'\n")
@@ -602,3 +602,26 @@ def concat_videos_for_youtube(video_paths: Tuple[Path, ...], output_path: Path) 
             )
             .run(overwrite_output=True, quiet=True)
         )
+
+
+def drop_audio_from_video(input_video: Path, output_video: Path) -> None:
+    """
+    Removes the audio track from a video file while preserving video quality.
+
+    :param input_video: Path to the input video file.
+    :param output_video: Path to save the output video file (no audio).
+    :raises ValueError: If the input file does not exist.
+    """
+
+    if not input_video.exists():
+        raise ValueError(f"Input file {input_video} does not exist.")
+
+    (
+        ffmpeg.input(str(input_video))
+        .output(
+            str(output_video),
+            c="copy",  # copy video stream directly (no re-encode)
+            an=None,  # drop all audio streams
+        )
+        .run(overwrite_output=True, quiet=True)
+    )

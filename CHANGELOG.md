@@ -1,5 +1,11 @@
 # Changelog
 
+0.14.0 - (2025-11-11)
+------------------
+
+* New library function to drop audio from a video file.
+
+
 0.13.0 - (2025-11-03)
 ------------------
 
