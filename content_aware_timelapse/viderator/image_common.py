@@ -137,7 +137,7 @@ def resize_image(
 
     output = cast(
         RGBInt8ImageType,
-        cv2.resize(image, (resolution.height, resolution.width), interpolation=cv2.INTER_CUBIC),
+        cv2.resize(image, (resolution.width, resolution.height), interpolation=cv2.INTER_CUBIC),
     )
 
     if delete:
