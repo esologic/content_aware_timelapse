@@ -1,5 +1,11 @@
 # Changelog
 
+0.14.1 - (2025-11-30)
+------------------
+
+* Migrated some library code to a public package.
+
+
 0.14.0 - (2025-11-11)
 ------------------
 
