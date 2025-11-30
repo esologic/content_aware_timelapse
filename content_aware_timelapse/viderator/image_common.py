@@ -3,6 +3,8 @@ Common functionality and types used in still images and in video.
 """
 
 import logging
+import math
+from numbers import Integral
 from pathlib import Path
 from typing import List, Tuple, cast
 
@@ -29,6 +31,21 @@ def image_resolution(image: RGBInt8ImageType) -> ImageResolution:
     """
 
     return ImageResolution(height=image.shape[0], width=image.shape[1])
+
+
+def resolution_aspect_ratio(resolution: ImageResolution) -> AspectRatio:
+    """
+    Compute the aspect ratio of an image's resolution
+
+    :param resolution:
+    :return: AspectRatio NT with width and height as floats.
+    """
+
+    if isinstance(resolution.width, Integral) and isinstance(resolution.height, Integral):
+        g = math.gcd(resolution.width, resolution.height)
+        return AspectRatio(width=float(resolution.width // g), height=float(resolution.height // g))
+    else:
+        return AspectRatio(width=float(resolution.width), height=float(resolution.height))
 
 
 def region_to_resolution(region: RectangleRegion) -> ImageResolution:

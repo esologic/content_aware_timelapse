@@ -17,6 +17,7 @@ from content_aware_timelapse.viderator import video_common
 from content_aware_timelapse.viderator.viderator_types import (
     AspectRatio,
     AspectRatioParamType,
+    ImageResolution,
     UniqueIntMatrix2DParamType,
 )
 
@@ -49,15 +50,10 @@ def cli() -> None:
         "then selects the best frames."
     )
 )
-@catcli_ui.input_files_arg
-@catcli_ui.output_path_arg
-@catcli_ui.duration_arg
-@catcli_ui.output_fps_arg
 @catcli_ui.batch_size_scores_arg
 @catcli_ui.frame_buffer_size_arg
 @catcli_ui.backend_scores_arg
 @catcli_ui.deselect_arg
-@catcli_ui.make_audio_option_group()
 @catcli_ui.vectors_path_scores_arg
 @catcli_ui.viz_path_arg
 @catcli_ui.gpus_arg
@@ -71,11 +67,14 @@ def cli() -> None:
     ),
     required=False,
 )
+@catcli_ui.video_inputs_outputs_args()
 def content(  # pylint: disable=too-many-locals,too-many-positional-arguments,too-many-arguments
     input_files: List[Path],
     output_path: Path,
     duration: float,
     output_fps: float,
+    output_resolution: Optional[ImageResolution],
+    resize_inputs: bool,
     batch_size_scores: int,
     frame_buffer_size: Optional[int],
     backend_scores: ConversionScoringFunctions,
@@ -95,6 +94,8 @@ def content(  # pylint: disable=too-many-locals,too-many-positional-arguments,to
     :param output_path: See click docs.
     :param duration: See click docs.
     :param output_fps: See click docs.
+    :param output_resolution: See click docs.
+    :param resize_inputs: See click docs.
     :param batch_size_scores: See click docs.
     :param frame_buffer_size: See click docs.
     :param backend_scores: See click docs.
@@ -112,6 +113,8 @@ def content(  # pylint: disable=too-many-locals,too-many-positional-arguments,to
         output_path=output_path,
         duration=duration,
         output_fps=output_fps,
+        output_resolution=output_resolution,
+        resize_inputs=resize_inputs,
         batch_size=batch_size_scores,
         buffer_size=frame_buffer_size,
         conversion_scoring_functions=backend_scores,
@@ -130,17 +133,12 @@ def content(  # pylint: disable=too-many-locals,too-many-positional-arguments,to
         "then selects the best frames of cropped region."
     )
 )
-@catcli_ui.input_files_arg
-@catcli_ui.output_path_arg
-@catcli_ui.duration_arg
-@catcli_ui.output_fps_arg
 @catcli_ui.batch_size_pois_arg
 @catcli_ui.batch_size_scores_arg
 @catcli_ui.frame_buffer_size_arg
 @catcli_ui.backend_scores_arg
 @catcli_ui.backend_pois_arg
 @catcli_ui.deselect_arg
-@catcli_ui.make_audio_option_group()
 @catcli_ui.vectors_path_pois_arg
 @catcli_ui.vectors_path_scores_arg
 @catcli_ui.viz_path_arg
@@ -166,11 +164,14 @@ def content(  # pylint: disable=too-many-locals,too-many-positional-arguments,to
     default="0",
     show_default=True,
 )
+@catcli_ui.video_inputs_outputs_args()
 def content_cropped(  # pylint: disable=too-many-locals,too-many-positional-arguments,too-many-arguments
     input_files: List[Path],
     output_path: Path,
     duration: float,
     output_fps: float,
+    output_resolution: Optional[ImageResolution],
+    resize_inputs: bool,
     batch_size_pois: int,
     batch_size_scores: int,
     frame_buffer_size: Optional[int],
@@ -194,6 +195,8 @@ def content_cropped(  # pylint: disable=too-many-locals,too-many-positional-argu
     :param output_path: See click docs.
     :param duration: See click docs.
     :param output_fps: See click docs.
+    :param output_resolution: See click docs.
+    :param resize_inputs: See click docs.
     :param batch_size_pois: See click docs.
     :param batch_size_scores: See click docs.
     :param frame_buffer_size: See click docs.
@@ -215,6 +218,8 @@ def content_cropped(  # pylint: disable=too-many-locals,too-many-positional-argu
         output_path=output_path,
         duration=duration,
         output_fps=output_fps,
+        output_resolution=output_resolution,
+        resize_inputs=resize_inputs,
         batch_size_pois=batch_size_pois,
         batch_size_scores=batch_size_scores,
         scaled_frames_buffer_size=frame_buffer_size,
@@ -237,16 +242,14 @@ def content_cropped(  # pylint: disable=too-many-locals,too-many-positional-argu
         "desired output length is reached."
     )
 )
-@catcli_ui.input_files_arg
-@catcli_ui.output_path_arg
-@catcli_ui.duration_arg
-@catcli_ui.output_fps_arg
-@catcli_ui.make_audio_option_group()
-def classic(  # pylint: disable=too-many-locals
+@catcli_ui.video_inputs_outputs_args()
+def classic(  # pylint: disable=too-many-locals,too-many-positional-arguments
     input_files: List[Path],
     output_path: Path,
     duration: float,
     output_fps: float,
+    output_resolution: Optional[ImageResolution],
+    resize_inputs: bool,
     audio: List[Path],
 ) -> None:
     """
@@ -259,12 +262,14 @@ def classic(  # pylint: disable=too-many-locals
     :param output_path: See click docs.
     :param duration: See click docs.
     :param output_fps: See click docs.
+    :param output_resolution: See click docs.
+    :param resize_inputs: See click docs.
     :param audio: See click docs.
     :return: None
     """
 
     source_frames = cat_pipelines.load_input_videos(
-        input_files=input_files, tqdm_desc="Reading Input Frames"
+        input_files=input_files, tqdm_desc="Reading Input Frames", resize_inputs=resize_inputs
     )
 
     take_every = int(
@@ -273,11 +278,14 @@ def classic(  # pylint: disable=too-many-locals
     )
 
     video_common.write_source_to_disk_consume(
-        source=itertools.islice(
-            source_frames.frames,
-            None,
-            None,
-            take_every,
+        source=cat_pipelines.optionally_resize(
+            output_resolution=output_resolution,
+            source=itertools.islice(
+                source_frames.frames,
+                None,
+                None,
+                take_every,
+            ),
         ),
         video_path=output_path,
         video_fps=output_fps,

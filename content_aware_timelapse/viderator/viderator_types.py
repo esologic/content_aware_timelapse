@@ -146,3 +146,42 @@ class UniqueIntMatrix2DParamType(click.ParamType):
             return matrix
         except Exception as e:  # pylint: disable=broad-except
             self.fail(f"{value!r} is not a valid 2D unique integer matrix: {e}", param, ctx)
+
+
+class ImageResolutionParamType(click.ParamType):
+    """
+    Parameter for passing in an image resolution, e.g. '1920x1080'.
+    """
+
+    name: str = "WIDTHxHEIGHT"
+
+    def convert(
+        self,
+        value: str,
+        param: Optional[click.Parameter],
+        ctx: Optional[click.Context],
+    ) -> ImageResolution:
+        """
+        Converts 'WIDTHxHEIGHT' (case-insensitive) into an ImageResolution NT.
+        """
+
+        try:
+            # Normalize separator
+            width_str, height_str = str(value).lower().split("x")
+            width = int(width_str)
+            height = int(height_str)
+        except Exception:  # pylint: disable=broad-except
+            self.fail(
+                f"{value!r} is not a valid image resolution. Use the format WIDTHxHEIGHT",
+                param,
+                ctx,
+            )
+
+        if width <= 0 or height <= 0:
+            self.fail(
+                f"Resolution values must be positive integers (got {width}x{height})",
+                param,
+                ctx,
+            )
+
+        return ImageResolution(width=width, height=height)

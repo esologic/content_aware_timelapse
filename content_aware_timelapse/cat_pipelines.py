@@ -64,13 +64,38 @@ def calculate_output_frames(duration: float, output_fps: float) -> int:
     return int(duration * output_fps)
 
 
+def optionally_resize(
+    output_resolution: Optional[ImageResolution], source: ImageSourceType
+) -> ImageSourceType:
+    """
+    Helper function. If a desired output resolution is given, resize the source, otherwise just
+    forward the source.
+    :param output_resolution: Desired output resolution. Or not.
+    :param source: To resize. Or not.
+    :return: Resized Source. Or not.
+    """
+
+    if output_resolution is not None:
+        return video_common.resize_source(
+            source=source,
+            resolution=output_resolution,
+        )
+
+    return source
+
+
 def load_input_videos(
-    input_files: List[Path], tqdm_desc: Optional[str] = None, tqdm_total: Optional[int] = None
+    input_files: List[Path],
+    resize_inputs: bool,
+    tqdm_desc: Optional[str] = None,
+    tqdm_total: Optional[int] = None,
 ) -> _CombinedVideos:
     """
     Helper function to combine the input videos.
 
     :param input_files: List of input videos.
+    :param resize_inputs: If True and the input videos have different resolutions, the videos will
+    be resized to the minimum resolution in the set.
     :param tqdm_desc: If provided, wrap the combined frame iterator in a tqdm progress bar
     with this description. If None, tqdm is disabled.
     :param tqdm_total: If provided, overrides the TQDM total field. By default, this is the total
@@ -83,20 +108,45 @@ def load_input_videos(
         map(frames_in_video.frames_in_video_opencv, input_files)
     )
 
-    all_input_frames = itertools.chain.from_iterable(
-        video_frames.frames for video_frames in input_video_frames
-    )
-
-    total_frame_count = sum(video_frames.total_frame_count for video_frames in input_video_frames)
-
     input_resolutions: Set[ImageResolution] = {
         video_frames.original_resolution for video_frames in input_video_frames
     }
 
-    input_fps: Set[float] = {video_frames.original_fps for video_frames in input_video_frames}
+    output_resolution: ImageResolution = next(iter(input_resolutions))
 
     if len(input_resolutions) > 1:
-        raise ValueError(f"Input videos have different resolutions: {input_video_frames}")
+
+        if resize_inputs:
+
+            aspect_ratios = set(list(map(image_common.resolution_aspect_ratio, input_resolutions)))
+
+            if len(aspect_ratios) > 1:
+                raise ValueError(
+                    f"Cannot resize inputs with multiple input aspect ratios: {aspect_ratios}"
+                )
+
+            smallest_resolution: ImageResolution = min(
+                input_resolutions, key=lambda resolution: resolution.width * resolution.height
+            )
+
+            output_resolution = smallest_resolution
+
+            all_input_frames = itertools.chain.from_iterable(
+                video_common.resize_source(
+                    source=video_frames.frames, resolution=smallest_resolution
+                )
+                for video_frames in input_video_frames
+            )
+        else:
+            raise ValueError(f"Input videos have different resolutions: {input_video_frames}")
+    else:
+        all_input_frames = itertools.chain.from_iterable(
+            video_frames.frames for video_frames in input_video_frames
+        )
+
+    total_frame_count = sum(video_frames.total_frame_count for video_frames in input_video_frames)
+
+    input_fps: Set[float] = {video_frames.original_fps for video_frames in input_video_frames}
 
     # Conditionally wrap in tqdm
     if tqdm_desc is not None:
@@ -114,7 +164,7 @@ def load_input_videos(
     return _CombinedVideos(
         total_frame_count=total_frame_count,
         frames=cast(ImageSourceType, frames_iter),
-        original_resolution=next(iter(input_resolutions)),
+        original_resolution=output_resolution,
         original_fps=next(iter(input_fps)),
     )
 
@@ -165,6 +215,8 @@ def create_timelapse_score(  # pylint: disable=too-many-locals,too-many-position
     output_path: Path,
     duration: float,
     output_fps: float,
+    output_resolution: Optional[ImageResolution],
+    resize_inputs: bool,
     batch_size: int,
     buffer_size: int,
     conversion_scoring_functions: ConversionScoringFunctions,
@@ -183,6 +235,8 @@ def create_timelapse_score(  # pylint: disable=too-many-locals,too-many-position
     :param output_path: See docs in library or click.
     :param duration: See docs in library or click.
     :param output_fps: See docs in library or click.
+    :param output_resolution: See docs in library or click.
+    :param resize_inputs: See docs in library or click.
     :param batch_size: See docs in library or click.
     :param buffer_size: See docs in library or click.
     :param conversion_scoring_functions: See docs in library or click.
@@ -196,39 +250,41 @@ def create_timelapse_score(  # pylint: disable=too-many-locals,too-many-position
     """
 
     frames_count_resolution = preload_and_scale(
-        video_source=load_input_videos(input_files=input_files, tqdm_desc="Reading Score Frames"),
+        video_source=load_input_videos(
+            input_files=input_files, tqdm_desc="Reading Score Frames", resize_inputs=resize_inputs
+        ),
         max_side_length=conversion_scoring_functions.max_side_length,
         buffer_size=buffer_size,
     )
 
+    output_image_source = reduce_frames_by_score(
+        scoring_frames=frames_count_resolution.frames,
+        output_frames=load_input_videos(
+            input_files=input_files, tqdm_desc="Reading Output Frames", resize_inputs=resize_inputs
+        ).frames,
+        source_frame_count=frames_count_resolution.total_frame_count,
+        intermediate_info=(
+            IntermediateFileInfo(
+                path=vectors_path,
+                signature=create_videos_signature(video_paths=input_files, modifications_salt=None),
+            )
+            if vectors_path is not None
+            else None
+        ),
+        output_path=output_path,
+        num_output_frames=calculate_output_frames(duration=duration, output_fps=output_fps),
+        output_fps=output_fps,
+        batch_size=batch_size,
+        conversion_scoring_functions=conversion_scoring_functions,
+        deselection_radius_frames=deselection_radius_frames,
+        audio_paths=audio_paths,
+        plot_path=plot_path,
+        gpus=gpus,
+        best_frame_path=best_frame_path,
+    )
+
     more_itertools.consume(
-        reduce_frames_by_score(
-            scoring_frames=frames_count_resolution.frames,
-            output_frames=load_input_videos(
-                input_files=input_files, tqdm_desc="Reading Output Frames"
-            ).frames,
-            source_frame_count=frames_count_resolution.total_frame_count,
-            intermediate_info=(
-                IntermediateFileInfo(
-                    path=vectors_path,
-                    signature=create_videos_signature(
-                        video_paths=input_files, modifications_salt=None
-                    ),
-                )
-                if vectors_path is not None
-                else None
-            ),
-            output_path=output_path,
-            num_output_frames=calculate_output_frames(duration=duration, output_fps=output_fps),
-            output_fps=output_fps,
-            batch_size=batch_size,
-            conversion_scoring_functions=conversion_scoring_functions,
-            deselection_radius_frames=deselection_radius_frames,
-            audio_paths=audio_paths,
-            plot_path=plot_path,
-            gpus=gpus,
-            best_frame_path=best_frame_path,
-        )
+        optionally_resize(output_resolution=output_resolution, source=output_image_source)
     )
 
 
@@ -237,6 +293,8 @@ def create_timelapse_crop_score(  # pylint: disable=too-many-locals,too-many-pos
     output_path: Path,
     duration: float,
     output_fps: float,
+    output_resolution: Optional[ImageResolution],
+    resize_inputs: bool,
     batch_size_pois: int,
     batch_size_scores: int,
     scaled_frames_buffer_size: int,
@@ -259,6 +317,8 @@ def create_timelapse_crop_score(  # pylint: disable=too-many-locals,too-many-pos
     :param output_path: See docs in library or click.
     :param duration: See docs in library or click.
     :param output_fps: See docs in library or click.
+    :param output_resolution: See docs in library or click.
+    :param resize_inputs: See docs in library or click.
     :param batch_size_pois: See docs in library or click.
     :param batch_size_scores: See docs in library or click.
     :param scaled_frames_buffer_size: See docs in library or click.
@@ -278,12 +338,16 @@ def create_timelapse_crop_score(  # pylint: disable=too-many-locals,too-many-pos
     num_regions: int = len(list(itertools.chain.from_iterable(layout_matrix)))
 
     poi_discovery_source: _CombinedVideos = load_input_videos(
-        input_files=input_files, tqdm_desc="Reading Frames for POI Discovery"
+        input_files=input_files,
+        tqdm_desc="Reading Frames for POI Discovery",
+        resize_inputs=resize_inputs,
     )
 
-    scoring_source: _CombinedVideos = load_input_videos(
-        input_files=input_files, tqdm_desc="Reading Frames to Crop and Score"
-    )
+    scoring_source: ImageSourceType = load_input_videos(
+        input_files=input_files,
+        tqdm_desc="Reading Frames to Crop and Score",
+        resize_inputs=resize_inputs,
+    ).frames
 
     crop_resolution = image_common.largest_fitting_region(
         source_resolution=poi_discovery_source.original_resolution,
@@ -320,7 +384,7 @@ def create_timelapse_crop_score(  # pylint: disable=too-many-locals,too-many-pos
     )
 
     cropped_to_best_region: ImageSourceType = video_common.crop_source(
-        source=scoring_source.frames,
+        source=scoring_source,
         region=next(iter(poi_regions)),
     )
 
@@ -364,6 +428,7 @@ def create_timelapse_crop_score(  # pylint: disable=too-many-locals,too-many-pos
             input_files=input_files,
             tqdm_desc="Reading Frames for Crop/Score Output",
             tqdm_total=final_frame_index,
+            resize_inputs=resize_inputs,
         ).frames,
         None,
         final_frame_index + 1,
@@ -384,7 +449,7 @@ def create_timelapse_crop_score(  # pylint: disable=too-many-locals,too-many-pos
                 )
 
     video_common.write_source_to_disk_consume(
-        source=output_frames(),
+        source=optionally_resize(output_resolution=output_resolution, source=output_frames()),
         video_path=output_path,
         video_fps=output_fps,
         audio_paths=audio_paths,

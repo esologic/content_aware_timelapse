@@ -26,6 +26,7 @@ from content_aware_timelapse.frames_to_vectors.vector_computation.compute_vector
     CONVERT_SCORE_VIT_CLS,
 )
 from content_aware_timelapse.gpu_discovery import discover_gpus
+from content_aware_timelapse.viderator.viderator_types import ImageResolutionParamType
 
 # A generic type variable for Enum subclasses, essentially any enum subclass.
 E = TypeVar("E", bound=Enum)
@@ -211,6 +212,18 @@ output_fps_arg = click.option(
     show_default=True,
 )
 
+output_resolution_arg = click.option(
+    "--output-resolution",
+    "-or",
+    type=ImageResolutionParamType(),
+    help="Desired resolution of the output video.",
+    required=False,
+    default=None,
+    show_default=True,
+    envvar=f"{ENV_VAR_PREFIX}_OUTPUT_RESOLUTION",
+    show_envvar=True,
+)
+
 frame_buffer_size_arg = click.option(
     "--frame-buffer-size",
     "-bu",
@@ -319,3 +332,46 @@ vectors_path_scores_arg = click.option(
     help="Intermediate scoring vectors will be written to this path. Can be used to re-run.",
     required=False,
 )
+
+resize_inputs_arg = click.option(
+    "--resize-inputs",
+    "-ri",
+    type=click.BOOL,
+    help=(
+        "If inputs are of different resolutions, the larger videos are shrunk to the smallest "
+        "input resolution for analysis."
+    ),
+    required=False,
+    default=True,
+    show_default=True,
+    envvar=f"{ENV_VAR_PREFIX}_RESIZE_INPUTS",
+    show_envvar=True,
+)
+
+
+def video_inputs_outputs_args() -> Callable[[FC], FC]:
+    """
+    Common set of args supported by all the video manipulation functions.
+    :return: Function to become a click decorator that will produce the set of options.
+    """
+
+    def decorator(command: FC) -> FC:
+        """
+        :param command: To wrap.
+        :return: Decorated function.
+        """
+
+        for option in [
+            input_files_arg,
+            output_path_arg,
+            duration_arg,
+            output_fps_arg,
+            output_resolution_arg,
+            make_audio_option_group(),
+            resize_inputs_arg,
+        ]:
+            option(command)
+
+        return command
+
+    return decorator

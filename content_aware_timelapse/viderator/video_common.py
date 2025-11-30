@@ -542,7 +542,7 @@ def concat_videos_for_youtube(video_paths: Tuple[Path, ...], output_path: Path) 
 
     resolved_paths = [p.absolute() for p in video_paths]
 
-    # --- Validation ---
+    # Validation
     for p in resolved_paths:
         if not p.exists():
             raise ValueError(f"Input file {p} does not exist.")
