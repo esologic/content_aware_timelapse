@@ -1,12 +1,12 @@
 # Changelog
 
-0.15.0 - (2025-11-30)
+0.15.0 - (2025-12-03)
 ------------------
 
 * Added `--resize-inputs` option to force resizing of inputs in cases where multiple videos are
 input with different resolutions.
 * Added `--output-resolution` and supporting click types to set the output resolution explicitly. 
-* 
+* Fixed a bug in high-quality ffmpeg writer where moov atom could get written incorrectly.
 
 
 0.14.1 - (2025-11-30)
