@@ -89,6 +89,7 @@ def load_input_videos(
     resize_inputs: bool,
     tqdm_desc: Optional[str] = None,
     tqdm_total: Optional[int] = None,
+    take_only: Optional[int] = None,
 ) -> _CombinedVideos:
     """
     Helper function to combine the input videos.
@@ -131,7 +132,9 @@ def load_input_videos(
 
             output_resolution = smallest_resolution
 
-            all_input_frames = itertools.chain.from_iterable(
+            LOGGER.debug(f"Resizing all inputs to: {output_resolution}")
+
+            all_input_frames: ImageSourceType = itertools.chain.from_iterable(
                 video_common.resize_source(
                     source=video_frames.frames, resolution=smallest_resolution
                 )
@@ -144,7 +147,11 @@ def load_input_videos(
             video_frames.frames for video_frames in input_video_frames
         )
 
-    total_frame_count = sum(video_frames.total_frame_count for video_frames in input_video_frames)
+    if take_only is not None:
+        all_input_frames = itertools.islice(all_input_frames, take_only)
+        total_frames = take_only
+    else:
+        total_frames = sum(video_frames.total_frame_count for video_frames in input_video_frames)
 
     input_fps: Set[float] = {video_frames.original_fps for video_frames in input_video_frames}
 
@@ -152,7 +159,7 @@ def load_input_videos(
     if tqdm_desc is not None:
         frames_iter = tqdm(
             all_input_frames,
-            total=tqdm_total if tqdm_total is not None else total_frame_count,
+            total=tqdm_total if tqdm_total is not None else total_frames,
             unit="Frames",
             ncols=100,
             desc=tqdm_desc,
@@ -162,7 +169,7 @@ def load_input_videos(
         frames_iter = all_input_frames
 
     return _CombinedVideos(
-        total_frame_count=total_frame_count,
+        total_frame_count=total_frames,
         frames=cast(ImageSourceType, frames_iter),
         original_resolution=output_resolution,
         original_fps=next(iter(input_fps)),

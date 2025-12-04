@@ -2,6 +2,7 @@
 Common functionality for dealing with video files.
 """
 
+import errno
 import logging
 import math
 import os
@@ -131,9 +132,14 @@ def _create_video_writer_resolution(
                 f"Input resolution: {resolution}"
             )
 
+        # Originally used `-movflags +faststart` vs `frag_keyframe+empty_moov` but ran into problems
+        # writing to slow filesystems.
+
         ffmpeg_cmd = [
             "ffmpeg",
             "-y",
+            "-loglevel",
+            "error",
             "-f",
             "rawvideo",
             "-pix_fmt",
@@ -147,32 +153,34 @@ def _create_video_writer_resolution(
             "-c:v",
             "libx264",
             "-crf",
-            "10",  # Visually lossless but not gigantic
+            "18",
             "-preset",
             "veryslow",
             "-pix_fmt",
             "yuv420p",
-            "-vf",
-            "format=yuv420p",
             "-movflags",
-            "+faststart",  # puts metadata up front
+            "frag_keyframe+empty_moov",
             str(video_path),
         ]
 
         ffmpeg_proc = subprocess.Popen(  # pylint: disable=consider-using-with
             ffmpeg_cmd,
             stdin=subprocess.PIPE,
-            stderr=subprocess.DEVNULL,
-            bufsize=0,  # unbuffered — we manage backpressure manually
+            stderr=subprocess.PIPE,
+            bufsize=0,
         )
 
         stdin_fd = ffmpeg_proc.stdin.fileno()
 
-        def write_frame(image: RGBInt8ImageType) -> None:
+        def write_frame(image: RGBInt8ImageType, write_frame_timeout: float = 5.0) -> None:
             """
-            Helper function to satisfy mypy.
-            :param image: To write.
-            :return: None
+            Write a frame to the FFmpeg process with a timeout.
+
+            :param image: Frame to write.
+            :param write_frame_timeout: Max seconds to wait for the pipe to be ready between frame
+            writes.
+            :raises TimeoutError: If the pipe is not ready within the timeout.
+            :raises RuntimeError: If FFmpeg closes the pipe unexpectedly.
             """
             if image.shape[1] != resolution.width or image.shape[0] != resolution.height:
                 raise ValueError("Incoming frame did not match output resolution!")
@@ -181,18 +189,53 @@ def _create_video_writer_resolution(
 
             color_space_swapped = cv2.cvtColor(image, cv2.COLOR_RGB2BGR)
 
-            # Wait until the pipe is ready for writing
-            select.select([], [stdin_fd], [])
-            ffmpeg_proc.stdin.write(color_space_swapped.tobytes())
+            # Wait until the pipe is ready for writing, with timeout
+            # select.select(read_list, write_list, exception_list, timeout)
+            # rlist: file descriptors ready for reading -> empty
+            # wlist: file descriptors ready for writing
+            # xlist: file descriptors with exceptional conditions -> empty
+            _rlist, wlist, _xlist = select.select([], [stdin_fd], [], write_frame_timeout)
+
+            if not wlist:
+                # stdin_fd was not ready for writing within timeout
+                raise TimeoutError(f"FFmpeg stdin not ready after {write_frame_timeout} seconds")
+
+            try:
+                # Write frame data to FFmpeg stdin
+                ffmpeg_proc.stdin.write(color_space_swapped.tobytes())
+            except OSError as e:
+                if e.errno == errno.EPIPE:
+                    # FFmpeg process closed stdin unexpectedly
+                    raise RuntimeError("FFmpeg process stdin closed unexpectedly") from e
+                raise
 
         def release() -> None:
             """
-            Closes the output stream.
+            Properly finishes the FFmpeg pipeline and ensures the MP4 finalizes.
             :return: None
             """
-            if ffmpeg_proc.stdin:
-                ffmpeg_proc.stdin.close()
-            ffmpeg_proc.wait()
+
+            if ffmpeg_proc.stdin and not ffmpeg_proc.stdin.closed:
+                try:
+                    ffmpeg_proc.stdin.flush()
+                    ffmpeg_proc.stdin.close()
+                except Exception as _exn:  # pylint: disable=broad-except
+                    LOGGER.exception("Ran into exception trying to flush/close FFmpeg process.")
+
+            if ffmpeg_proc.stderr:
+                try:
+                    err = ffmpeg_proc.stderr.read().decode("utf-8", errors="replace")
+                    if err:
+                        LOGGER.error(f"FFmpeg process produced stderr: {err}")
+                except Exception as _exn:  # pylint: disable=broad-except
+                    LOGGER.exception(
+                        "Ran into exception trying to read stderr from FFmpeg process."
+                    )
+
+            return_code = ffmpeg_proc.wait()
+
+            if return_code != 0:
+                LOGGER.error(f"FFmpeg exited with code {return_code}")
 
         return VideoOutputController(write=write_frame, release=release)
 

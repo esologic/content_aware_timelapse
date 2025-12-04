@@ -216,7 +216,10 @@ output_resolution_arg = click.option(
     "--output-resolution",
     "-or",
     type=ImageResolutionParamType(),
-    help="Desired resolution of the output video.",
+    help=(
+        "Desired resolution of the output video. Video is resized as the final output step so "
+        "resizing will occur after any cropping etc."
+    ),
     required=False,
     default=None,
     show_default=True,

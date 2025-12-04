@@ -6,6 +6,7 @@
 * Added `--resize-inputs` option to force resizing of inputs in cases where multiple videos are
 input with different resolutions.
 * Added `--output-resolution` and supporting click types to set the output resolution explicitly. 
+* 
 
 
 0.14.1 - (2025-11-30)
