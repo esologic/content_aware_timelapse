@@ -2,6 +2,7 @@
 
 import itertools
 import logging
+import sys
 from pathlib import Path
 from typing import List, Optional, Tuple
 
@@ -309,6 +310,71 @@ def classic(  # pylint: disable=too-many-locals,too-many-positional-arguments
         high_quality=True,
         audio_paths=audio,
     )
+
+
+@cli.command(short_help="Utility to benchmark image processing throughput.")
+@catcli_ui.batch_size_scores_arg
+@catcli_ui.backend_scores_arg
+@catcli_ui.gpus_arg
+@click.option(
+    "--batch-count",
+    type=click.IntRange(min=1),
+    required=True,
+    help="Number of batches of frames to feed through the GPU.",
+    default=8,
+    show_default=True,
+)
+@click.option(
+    "--runs",
+    type=click.IntRange(min=1),
+    required=True,
+    help="Number of times to run the benchmark.",
+    default=5,
+    show_default=True,
+)
+def benchmark(  # pylint: disable=too-many-locals,too-many-positional-arguments,too-many-arguments
+    batch_size_scores: int,
+    backend_scores: ConversionScoringFunctions,
+    gpu: Optional[Tuple[GPUDescription, ...]],
+    batch_count: int,
+    runs: int,
+) -> None:
+    """
+    Returns the frames/per second the given set of GPUs can shove images through the conversion
+    function. Helps measure improvements in the conversion function mechanics as well as evaluate
+    performance of standalone CAT GPU nodes.
+
+    1. A frame buffer of batch_size * batch_count + 1 is loaded into memory.
+    2. One batch is converted to ensure all modeling loading etc has taken place.
+    3. Start the timer.
+    4. Remaining batches are converted, discarding the output.
+    5. Timer stops.
+
+    The result of (batch_size * batch_count) / duration in sections is computed.
+
+    This whole process is done per the run value and the mean is reported.
+
+    \f
+
+    :param batch_size_scores: See click docs.
+    :param backend_scores: See click docs.
+    :param gpu: See click docs.
+    :param batch_count: See click docs.
+    :param runs: See click docs.
+    :return: None
+    """
+
+    frames_per_second = cat_pipelines.benchmark(
+        conversion_scoring_functions=backend_scores,
+        batch_size=batch_size_scores,
+        gpus=gpu if gpu else discover_gpus(),
+        batch_count=batch_count,
+        runs=runs,
+    )
+
+    click.echo(frames_per_second)
+
+    sys.exit(0)
 
 
 if __name__ == "__main__":

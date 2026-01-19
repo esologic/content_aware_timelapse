@@ -5,13 +5,16 @@ Main functionality, defines the pipeline.
 import itertools
 import json
 import logging
+import time
 from functools import partial
 from pathlib import Path
+from statistics import mean
 from typing import List, NamedTuple, Optional, Set, Tuple, cast
 
 import more_itertools
 from tqdm import tqdm
 
+from assets import EASTERN_BOX_TURTLE_PATH
 from content_aware_timelapse.frames_to_vectors import vector_scoring
 from content_aware_timelapse.frames_to_vectors.conversion import IntermediateFileInfo
 from content_aware_timelapse.frames_to_vectors.conversion_types import (
@@ -468,3 +471,71 @@ def create_timelapse_crop_score(  # pylint: disable=too-many-locals,too-many-pos
         audio_paths=audio_paths,
         high_quality=True,
     )
+
+
+def benchmark(
+    conversion_scoring_functions: ConversionScoringFunctions,
+    gpus: Tuple[GPUDescription, ...],
+    batch_size: int,
+    batch_count: int,
+    runs: int,
+) -> float:
+    """
+    Package API counterpart of the CLI function.
+
+    Returns the frames/per second the given set of GPUs can shove images through the conversion
+    function. Helps measure improvements in the conversion function mechanics as well as evaluate
+    performance of standalone CAT GPU nodes.
+
+    1. A frame buffer of batch_size * batch_count + 1 is loaded into memory.
+    2. One batch is converted to ensure all modeling loading etc has taken place.
+    3. Start the timer.
+    4. Remaining batches are converted, discarding the output.
+    5. Timer stops.
+
+    The result of (batch_size * batch_count) / duration in sections is reported.
+
+    This whole process is done per the run value and the mean is reported.
+
+    :param conversion_scoring_functions: Contains the function that converts batches of frames into
+    vectors. Also, responsible for bootstrapping GPU environment. Only the conversion function
+    and the side length are used in this function.
+    :param gpus: To use in the benchmark.
+    :param batch_size: Batch size processed at one time by the GPU.
+    :param batch_count: Number of batches to process for the benchmark.
+    :param runs: Number of times to run the benchmark.
+    :return: Throughput in frames/second.
+    """
+
+    def single_run() -> float:
+        """
+        Run the benchmark once.
+        :return: Frames per second as a float
+        """
+
+        full_size = image_common.load_rgb_image(path=EASTERN_BOX_TURTLE_PATH)
+        shrunk_to_side_length = image_common.resize_image_max_side(
+            image=full_size,
+            max_side_length=conversion_scoring_functions.max_side_length,
+            delete=True,
+        )
+
+        all_frames = [shrunk_to_side_length.copy() for _ in range(batch_size * (batch_count + 1))]
+
+        output_iterator = conversion_scoring_functions.conversion(
+            frame_batches=more_itertools.chunked(all_frames, batch_size),
+            gpus=gpus,
+        )
+
+        _warmup_vectors = next(output_iterator)
+
+        start = time.perf_counter()
+        more_itertools.consume(output_iterator)
+        end = time.perf_counter()
+
+        # Free all references to the test images. Makes sure they're all gone on the GPU as well.
+        del all_frames
+
+        return (batch_size * batch_count) / (end - start)
+
+    return mean([single_run() for _ in range(runs)])

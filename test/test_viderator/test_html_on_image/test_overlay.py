@@ -3,12 +3,13 @@ Test to make sure HTML overlay writing works.
 """
 
 from pathlib import Path
-from test import assets
+from test import assets as test_assets
 from typing import Tuple, cast
 
 import numpy as np
 import pytest
 
+import assets as repo_assets
 from content_aware_timelapse.viderator import image_common
 from content_aware_timelapse.viderator.html_on_image import overlay_on_image
 from content_aware_timelapse.viderator.image_common import RGBInt8ImageType
@@ -25,7 +26,9 @@ def color_near(image: RGBInt8ImageType, target: Tuple[int, int, int], tol: int =
     return bool(np.any(np.all(np.abs(image - target) <= tol, axis=-1)))
 
 
-@pytest.mark.parametrize("image_path", [assets.EASTERN_BOX_TURTLE_PATH, assets.STREAM_SOFTWARE])
+@pytest.mark.parametrize(
+    "image_path", [repo_assets.EASTERN_BOX_TURTLE_PATH, test_assets.STREAM_SOFTWARE]
+)
 def test_simple_thumbnail_image_full_fast(artifact_root: Path, image_path: Path) -> None:
     """
     Checks overlay colors (text, shadow, gradient) while preserving some original colors.

@@ -6,13 +6,14 @@ import shutil
 import subprocess
 from itertools import tee
 from pathlib import Path
-from test.assets import EASTERN_BOX_TURTLE_PATH, LONG_TEST_VIDEO_PATH, SAMPLE_TIMELAPSE_INPUT_PATH
+from test.assets import LONG_TEST_VIDEO_PATH, SAMPLE_TIMELAPSE_INPUT_PATH
 from test.test_viderator import viderator_test_common
 from typing import List
 
 import numpy as np
 import pytest
 
+from assets import EASTERN_BOX_TURTLE_PATH
 from content_aware_timelapse.viderator import frames_in_video, image_common, video_common
 from content_aware_timelapse.viderator.viderator_types import ImageResolution
 

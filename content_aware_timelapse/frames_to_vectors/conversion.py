@@ -40,6 +40,8 @@ def frames_to_vectors(  # pylint:disable=too-many-positional-arguments
     Computes feature vectors from an input iterator or frames.
     Because this process is expensive, even with GPU, the intermediate vectors are written to disk
     to avoid re-doing the work.
+
+    TODO This is the function we want to benchmark.
     :param frames: Frames to process.
     :param intermediate_info: Describes the intermediate vector file, if not given it will not
     be used.

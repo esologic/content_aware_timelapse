@@ -314,7 +314,7 @@ batch_size_scores_arg = click.option(
     type=click.IntRange(min=1),
     help="Scaled frames for scoring are sent to GPU for processing in batches of this size.",
     required=True,
-    default=600,
+    default=100,  # Safe on many GPUs for both attention and scoring VIT.
     show_default=True,
     envvar=f"{ENV_VAR_PREFIX}_BATCH_SCORES",
     show_envvar=True,
