@@ -99,6 +99,7 @@ def test_tee_disk_cache_frames(
     run_disk_cache_test(to_duplicate, copies, serializer)
 
 
+@pytest.mark.integration
 def test_disk_buffer() -> None:
     """
     Test to make sure the input of the disk buffer function maintains the original iterator.
@@ -121,6 +122,7 @@ def test_disk_buffer() -> None:
         assert np.array_equal(buffered_frame, input_frame)
 
 
+@pytest.mark.integration
 @pytest.mark.skip()
 def test_disk_buffer_speed() -> None:
     """
