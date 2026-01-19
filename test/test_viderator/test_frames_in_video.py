@@ -17,7 +17,6 @@ from content_aware_timelapse.viderator.image_common import image_resolution
 from content_aware_timelapse.viderator.viderator_types import ImageResolution
 
 
-@pytest.mark.integration
 @pytest.mark.parametrize("video_path", [SAMPLE_TIMELAPSE_INPUT_PATH])
 @pytest.mark.parametrize(
     "function_under_test",

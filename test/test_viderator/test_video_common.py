@@ -39,7 +39,6 @@ def is_video_valid(path: Path) -> bool:
         return False
 
 
-@pytest.mark.integration
 @pytest.mark.parametrize(
     "input_image_resolution",
     [
@@ -101,7 +100,6 @@ def test_write_source_to_disk_consume(
         )
 
 
-@pytest.mark.integration
 @pytest.mark.parametrize(
     "video_to_copy",
     [
@@ -170,7 +168,6 @@ def test_concat_videos_for_youtube(
             pass
 
 
-@pytest.mark.integration
 @pytest.mark.parametrize("high_quality", [True, False])
 def test_write_source_to_disk_consume_turtle(artifact_root: Path, high_quality: bool) -> None:
     """
