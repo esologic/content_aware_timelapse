@@ -1,6 +1,6 @@
 # Changelog
 
-0.17.0 - (2026-01-19)
+0.17.1 - (2026-01-19)
 ------------------
 
 * Publishes the package on pypi.
