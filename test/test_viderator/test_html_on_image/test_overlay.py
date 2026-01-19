@@ -26,6 +26,7 @@ def color_near(image: RGBInt8ImageType, target: Tuple[int, int, int], tol: int =
     return bool(np.any(np.all(np.abs(image - target) <= tol, axis=-1)))
 
 
+@pytest.mark.integration
 @pytest.mark.parametrize(
     "image_path", [repo_assets.EASTERN_BOX_TURTLE_PATH, test_assets.STREAM_SOFTWARE]
 )

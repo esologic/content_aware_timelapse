@@ -69,6 +69,7 @@ def test_tee_disk_cache(to_duplicate: List[int | str], copies: int) -> None:
     run_disk_cache_test(to_duplicate, copies)
 
 
+@pytest.mark.integration
 @pytest.mark.parametrize(
     "serializer", [HDF5_COMPRESSED_SERIALIZER, HDF5_SERIALIZER, PICKLE_SERIALIZER]
 )

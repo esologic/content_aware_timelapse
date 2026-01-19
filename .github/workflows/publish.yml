@@ -28,15 +28,15 @@ jobs:
           python-version: "3.10"
 
       # Cache Poetry dependencies
-      - name: Cache Poetry
+      - name: Cache Poetry & pip
         uses: actions/cache@v4
         with:
           path: |
             ~/.cache/pypoetry
-            .venv
-          key: poetry-${{ runner.os }}-${{ hashFiles('poetry.lock', 'pyproject.toml') }}
+            ~/.cache/pip
+          key: poetry-${{ runner.os }}-${{ hashFiles('poetry.lock') }}
           restore-keys: |
-            poetry-
+            poetry-${{ runner.os }}-
 
       # Install dependencies
       - name: Install dependencies
