@@ -2,9 +2,13 @@ name: Python CI & Publish
 
 on:
   push:
+    branches:
+      - main
+      - build_fixes
     tags:
       - 'v*'  # trigger publish on version tags
   pull_request:
+
 
 jobs:
   build:
