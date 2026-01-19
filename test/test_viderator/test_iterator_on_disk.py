@@ -50,6 +50,7 @@ def run_disk_cache_test(
         assert np.array_equal(to_duplicate, values)
 
 
+@pytest.mark.integration
 @pytest.mark.parametrize("copies", range(1, 4))
 @pytest.mark.parametrize(
     "to_duplicate",
