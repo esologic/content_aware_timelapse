@@ -307,7 +307,6 @@ def create_timelapse_crop_score(  # pylint: disable=too-many-locals,too-many-pos
     scaled_frames_buffer_size: int,
     conversion_pois_functions: ConversionPOIsFunctions,
     conversion_scoring_functions: ConversionScoringFunctions,
-    aspect_ratio: AspectRatio,
     scoring_deselection_radius_frames: int,
     audio_paths: List[Path],
     gpus: Tuple[GPUDescription, ...],
@@ -315,6 +314,8 @@ def create_timelapse_crop_score(  # pylint: disable=too-many-locals,too-many-pos
     pois_vectors_path: Optional[Path],
     scores_vectors_path: Optional[Path],
     plot_path: Optional[Path],
+    aspect_ratio: Optional[AspectRatio] = None,
+    crop_resolution: Optional[ImageResolution] = None,
 ) -> None:
     """
     Library backend for the UI function. See docs in `reduce_frames_by_score`, `crop_to_pois` or
@@ -332,6 +333,7 @@ def create_timelapse_crop_score(  # pylint: disable=too-many-locals,too-many-pos
     :param conversion_pois_functions: See docs in library or click.
     :param conversion_scoring_functions: See docs in library or click.
     :param aspect_ratio: See docs in library or click.
+    :param crop_resolution: See docs in library or click.
     :param scoring_deselection_radius_frames: See docs in library or click.
     :param audio_paths: See docs in library or click.
     :param gpus: See docs in library or click.
@@ -341,6 +343,9 @@ def create_timelapse_crop_score(  # pylint: disable=too-many-locals,too-many-pos
     :param plot_path: See docs in library or click.
     :return: None
     """
+
+    if not any([aspect_ratio, crop_resolution]):
+        raise ValueError("Either an aspect ratio or crop resolution must be provided.")
 
     num_regions: int = len(list(itertools.chain.from_iterable(layout_matrix)))
 
@@ -356,11 +361,12 @@ def create_timelapse_crop_score(  # pylint: disable=too-many-locals,too-many-pos
         resize_inputs=resize_inputs,
     ).frames
 
-    crop_resolution = image_common.largest_fitting_region(
-        source_resolution=poi_discovery_source.original_resolution,
-        aspect_ratio=aspect_ratio,
-        even_dimensions=True,
-    )
+    if crop_resolution is None:
+        crop_resolution = image_common.largest_fitting_region(
+            source_resolution=poi_discovery_source.original_resolution,
+            aspect_ratio=aspect_ratio,
+            even_dimensions=True,
+        )
 
     poi_regions: Tuple[RectangleRegion, ...] = discover_poi_regions(
         analysis_frames=preload_and_scale(

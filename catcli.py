@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import List, Optional, Tuple
 
 import click
+from click_option_group import RequiredMutuallyExclusiveOptionGroup, optgroup
 
 from content_aware_timelapse import cat_pipelines, catcli_ui
 from content_aware_timelapse.frames_to_vectors.conversion_types import (
@@ -18,6 +19,7 @@ from content_aware_timelapse.viderator.viderator_types import (
     AspectRatio,
     AspectRatioParamType,
     ImageResolution,
+    ImageResolutionParamType,
     UniqueIntMatrix2DParamType,
 )
 
@@ -143,12 +145,24 @@ def content(  # pylint: disable=too-many-locals,too-many-positional-arguments,to
 @catcli_ui.vectors_path_scores_arg
 @catcli_ui.viz_path_arg
 @catcli_ui.gpus_arg
-@click.option(
+@optgroup.group(
+    "Crop Config",
+    help="Configures how the video will be cropped.",
+    cls=RequiredMutuallyExclusiveOptionGroup,
+)
+@optgroup.option(
     "--aspect-ratio",
-    "-r",
+    "-ar",
     type=AspectRatioParamType(),
-    required=True,
-    help="Aspect ratio in the format WIDTH:HEIGHT (e.g., 16:9, 4:3, 1.85:1).",
+    help="Crop by aspect ratio in the format WIDTH:HEIGHT (e.g., 16:9, 4:3, 1.85:1).",
+    default=None,
+)
+@optgroup.option(
+    "--crop-resolution",
+    "-cr",
+    type=ImageResolutionParamType(),
+    help="Crops to the most interesting video section of this size.",
+    default=None,
 )
 @click.option(
     "--layout",
@@ -178,6 +192,7 @@ def content_cropped(  # pylint: disable=too-many-locals,too-many-positional-argu
     backend_pois: ConversionPOIsFunctions,
     backend_scores: ConversionScoringFunctions,
     aspect_ratio: AspectRatio,
+    crop_resolution: ImageResolution,
     deselect: int,
     audio: List[Path],
     vectors_path_pois: Optional[Path],
@@ -203,6 +218,7 @@ def content_cropped(  # pylint: disable=too-many-locals,too-many-positional-argu
     :param backend_pois: See click docs.
     :param backend_scores: See click docs.
     :param aspect_ratio: See click docs.
+    :param crop_resolution: See click docs.
     :param deselect: See click docs.
     :param audio: See click docs.
     :param vectors_path_pois: See click docs.
@@ -226,6 +242,7 @@ def content_cropped(  # pylint: disable=too-many-locals,too-many-positional-argu
         conversion_pois_functions=backend_pois,
         conversion_scoring_functions=backend_scores,
         aspect_ratio=aspect_ratio,
+        crop_resolution=crop_resolution,
         scoring_deselection_radius_frames=deselect,
         audio_paths=audio,
         pois_vectors_path=vectors_path_pois,
