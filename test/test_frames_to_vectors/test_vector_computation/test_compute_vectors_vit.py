@@ -13,6 +13,7 @@ from content_aware_timelapse.frames_to_vectors.vector_computation import compute
 from content_aware_timelapse.viderator.viderator_types import ImageResolution
 
 
+@pytest.mark.integration
 @pytest.mark.parametrize("side_length,fill_color", [(224, (123, 116, 103))])
 @pytest.mark.parametrize(
     "input_resolution",

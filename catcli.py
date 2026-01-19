@@ -2,7 +2,6 @@
 
 import itertools
 import logging
-import sys
 from pathlib import Path
 from typing import List, Optional, Tuple
 
@@ -373,8 +372,6 @@ def benchmark(  # pylint: disable=too-many-locals,too-many-positional-arguments,
     )
 
     click.echo(frames_per_second)
-
-    sys.exit(0)
 
 
 if __name__ == "__main__":

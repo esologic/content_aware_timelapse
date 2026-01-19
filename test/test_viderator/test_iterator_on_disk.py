@@ -146,6 +146,7 @@ def test_disk_buffer_speed() -> None:
     print(f"buffered time: {buffered_time}, opencv time: {opencv_time}")
 
 
+@pytest.mark.integration
 @pytest.mark.parametrize(
     "image_resolution,frame_count",
     [(ImageResolution(100, 100), 200), (ImageResolution(10, 10), 300_000)],

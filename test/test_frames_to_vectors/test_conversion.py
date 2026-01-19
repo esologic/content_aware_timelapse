@@ -22,6 +22,7 @@ from content_aware_timelapse.gpu_discovery import discover_gpus
 from content_aware_timelapse.viderator.viderator_types import ImageResolution
 
 
+@pytest.mark.integration
 @pytest.mark.parametrize(
     "convert_batches_function",
     [

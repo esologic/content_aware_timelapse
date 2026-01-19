@@ -39,6 +39,7 @@ def is_video_valid(path: Path) -> bool:
         return False
 
 
+@pytest.mark.integration
 @pytest.mark.parametrize(
     "input_image_resolution",
     [

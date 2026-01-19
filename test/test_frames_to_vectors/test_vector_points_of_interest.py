@@ -28,6 +28,7 @@ from content_aware_timelapse.viderator.viderator_types import (
 )
 
 
+@pytest.mark.integration
 @pytest.mark.skip()
 @pytest.mark.parametrize("pois_functions", [CONVERT_POIS_VIT_ATTENTION])
 def test_crop_to_pois_visualization_check(pois_functions: ConversionPOIsFunctions) -> None:

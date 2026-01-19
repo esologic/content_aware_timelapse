@@ -12,7 +12,7 @@ force_grid_wrap = 0
 include_trailing_comma = true
 line_length = 100
 multi_line_output = 3
-skip = ["/home/circleci/repo/venv", "./venv", "./.venv"]
+skip = ["./venv", "./.venv"]
 use_parentheses = true
 
 [tool.mypy]
@@ -36,7 +36,7 @@ warn_unused_ignores = true
 
 [tool.poetry]
 authors = ["Devon Bray"]
-description = "Create timelapses from video that change speed based on the content found in the video. Boring sections are sped over."
+description = "Create timelapses from video that change speed based on the content found in the video."
 name = "content_aware_timelapse"
 readme = "README.md"
 version = "0.16.0"
@@ -88,8 +88,8 @@ pytest-cov = "*"
 
 [tool.pytest.ini_options]
 addopts = "-rsxX --showlocals --strict-markers"
-
-[tool.pytest.ini_options.markers]
-devtest = "temporary development mark that can be used as needed (should not be merged to master)"
-integration = "tests that access outside services (s3, APIs), don't run in CircleCI"
-timeout = "timeout for test in seconds, from `pytest-timeout` module"
+markers = [
+    "devtest: temporary development mark that can be used as needed (should not be merged to master)",
+    "integration: tests that access outside services (s3, APIs), or use special hardware. don't run on CI",
+    "timeout: timeout for test in seconds, from pytest-timeout module",
+]

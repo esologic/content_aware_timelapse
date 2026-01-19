@@ -31,6 +31,7 @@ from content_aware_timelapse.viderator import image_common
 from content_aware_timelapse.viderator.viderator_types import ImageSourceType
 
 
+@pytest.mark.integration
 @pytest.mark.parametrize(
     "conversion_scoring_functions",
     [

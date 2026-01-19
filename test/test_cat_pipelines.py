@@ -27,6 +27,7 @@ from content_aware_timelapse.viderator.image_common import image_resolution, loa
 from content_aware_timelapse.viderator.viderator_types import AspectRatio, ImageResolution
 
 
+@pytest.mark.integration
 @pytest.mark.parametrize("buffer_size", [0, 100])
 @pytest.mark.parametrize("batch_size", [50, 100])
 @pytest.mark.parametrize(
@@ -87,6 +88,7 @@ def test_create_timelapse_score(
     vectors_path.unlink(missing_ok=True)
 
 
+@pytest.mark.integration
 @pytest.mark.parametrize("best_frame_enabled", [True, False])
 @pytest.mark.parametrize(
     "conversion_scoring_functions",
@@ -154,6 +156,7 @@ def test_create_timelapse_score_output(
     output_path.unlink(missing_ok=True)
 
 
+@pytest.mark.integration
 def test_create_timelapse_crop_score(
     tmpdir: str,
 ) -> None:
