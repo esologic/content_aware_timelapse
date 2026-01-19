@@ -46,7 +46,11 @@ jobs:
       # Run tests
       - name: Run Tests
         run: |
+          set +e
           ./tools/run_tests.sh 'not integration'
+          EXIT_CODE=$?
+          echo "pytest exit code: $EXIT_CODE"
+          exit $EXIT_CODE
 
       # Run linters
       - name: Run Pylint
