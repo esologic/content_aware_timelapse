@@ -227,33 +227,6 @@ test = ["pytest"]
 test-cov = ["pytest", "pytest-cov"]
 
 [[package]]
-name = "clip"
-version = "1.0"
-description = ""
-optional = false
-python-versions = "*"
-groups = ["main"]
-files = []
-develop = false
-
-[package.dependencies]
-ftfy = "*"
-packaging = "*"
-regex = "*"
-torch = "*"
-torchvision = "*"
-tqdm = "*"
-
-[package.extras]
-dev = ["pytest"]
-
-[package.source]
-type = "git"
-url = "https://github.com/openai/CLIP.git"
-reference = "HEAD"
-resolved_reference = "dcba3cb2e2827b402d2701e7e1c7d9fed8a20ef1"
-
-[[package]]
 name = "colorama"
 version = "0.4.6"
 description = "Cross-platform colored terminal text."
@@ -1691,6 +1664,25 @@ files = [
 ]
 
 [[package]]
+name = "openai-clip"
+version = "1.0.1"
+description = ""
+optional = false
+python-versions = "*"
+groups = ["main"]
+files = [
+    {file = "openai-clip-1.0.1.tar.gz", hash = "sha256:cd40bf2f205c096c49524fcbff484339f793b52afd6e7ffad80a2fe108151721"},
+]
+
+[package.dependencies]
+ftfy = "*"
+regex = "*"
+tqdm = "*"
+
+[package.extras]
+dev = ["pytest"]
+
+[[package]]
 name = "opencv-python"
 version = "4.12.0.88"
 description = "Wrapper package for OpenCV python bindings."
@@ -3011,4 +3003,4 @@ test = ["pytest (>=3.0.0)"]
 [metadata]
 lock-version = "2.1"
 python-versions = "^3.10"
-content-hash = "40d5d07b3ad0c48900aadbc2e002275ed21232fc80ca28c3b425e20ef42594c9"
+content-hash = "13e90ff4ae85463178d1335b7c5e8a24fae07f3c2912ea21d60c09c507769538"
