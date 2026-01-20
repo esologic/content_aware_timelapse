@@ -372,7 +372,7 @@ def benchmark(  # pylint: disable=too-many-locals,too-many-positional-arguments,
         runs=runs,
     )
 
-    output_json = json.dumps({"audio_throughput_fps": frames_per_second})
+    output_json = json.dumps({"throughput_fps": frames_per_second})
 
     click.echo(f"Benchmark Result: {output_json}")
 
