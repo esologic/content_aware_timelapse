@@ -1,6 +1,7 @@
 """Main module."""
 
 import itertools
+import json
 import logging
 from pathlib import Path
 from typing import List, Optional, Tuple
@@ -371,7 +372,9 @@ def benchmark(  # pylint: disable=too-many-locals,too-many-positional-arguments,
         runs=runs,
     )
 
-    click.echo(frames_per_second)
+    output_json = json.dumps({"audio_throughput_fps": frames_per_second})
+
+    click.echo(f"Benchmark Result: {output_json}")
 
 
 if __name__ == "__main__":

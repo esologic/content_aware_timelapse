@@ -1,5 +1,11 @@
 # Changelog
 
+0.17.3 - (2026-01-19)
+------------------
+
+* Updated benchmarking output with a bit more structure to make it easier to find the real output.
+
+
 0.17.2 - (2026-01-19)
 ------------------
 
