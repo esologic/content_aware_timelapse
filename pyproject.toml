@@ -39,7 +39,7 @@ authors = ["Devon Bray"]
 description = "Create timelapses from video that change speed based on the content found in the video."
 name = "content_aware_timelapse"
 readme = "README.md"
-version = "0.17.4"
+version = "0.17.5"
 
 [tool.poetry.dependencies]
 python = "^3.10"
