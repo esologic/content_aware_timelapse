@@ -1,5 +1,11 @@
 # Changelog
 
+0.17.4 - (2026-02-03)
+------------------
+
+* Relaxed some dependencies to support more GPU environments.
+
+
 0.17.3 - (2026-01-19)
 ------------------
 

@@ -12,9 +12,9 @@ import pytest
 from content_aware_timelapse import vector_file
 
 
-def random_vector_iterator(  # type: ignore[explicit-any]
+def random_vector_iterator(
     num_vectors: int, vector_shape: Tuple[int, ...], dtype: np.dtype  # type: ignore[type-arg]
-) -> Iterator[npt.NDArray[np.floating]]:
+) -> Iterator[npt.NDArray[np.float16]]:
     """
     Generates an iterator of random vectors with the given shape.
     :param num_vectors: Number of vectors to generate.
@@ -63,8 +63,8 @@ def test_write_and_read_vectors(
     random_vectors = list(random_vector_iterator(num_vectors, vector_shape, dtype))
 
     # Write the vectors to the file
-    written_vectors: List[npt.NDArray[np.floating]] = list(  # type: ignore[explicit-any]
-        vector_file.write_vector_file_forward(
+    written_vectors: List[npt.NDArray[np.float32]] = list(
+        vector_file.write_vector_file_forward(  # type: ignore[arg-type]
             vector_iterator=iter(random_vectors),
             vector_file=test_vector_file,
             input_signature="test_signature",
