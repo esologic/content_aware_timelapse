@@ -1,5 +1,11 @@
 # Changelog
 
+0.17.6 - (2026-11-02)
+------------------
+
+* Fixed bug were openCV video file reads could timeout. 
+
+
 0.17.5 - (2026-02-03)
 ------------------
 

@@ -21,6 +21,12 @@ from content_aware_timelapse.viderator.viderator_types import (
 
 LOGGER = logging.getLogger(__name__)
 
+_OPENCV_TIMEOUT_MS = 60_000 * 5
+"""
+Ran into some issues reading from big files from the NAS.
+Overriding this in a few places to be more compatible.
+"""
+
 
 class FramesInVideo(Protocol):
     """
@@ -66,7 +72,16 @@ def frames_in_video_opencv(
     :return: See docs in protocol.
     """
 
-    vid_capture = cv2.VideoCapture(str(video_path))
+    vid_capture = cv2.VideoCapture(
+        str(video_path),
+        cv2.CAP_FFMPEG,
+        [
+            cv2.CAP_PROP_OPEN_TIMEOUT_MSEC,
+            _OPENCV_TIMEOUT_MS,
+            cv2.CAP_PROP_READ_TIMEOUT_MSEC,
+            _OPENCV_TIMEOUT_MS,
+        ],
+    )
 
     file_fps = float(vid_capture.get(cv2.CAP_PROP_FPS))
 
@@ -127,6 +142,7 @@ def frames_in_video_opencv(
                 )
                 yield output
             else:
+                # `ret` might be False if the video read operation times out.
                 break
 
     return VideoFrames(
